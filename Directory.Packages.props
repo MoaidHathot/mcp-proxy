@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+  <PropertyGroup>
+    <DotnetVersion>9.0.0</DotnetVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.7" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.7" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageVersion Include="ModelContextProtocol" Version="0.3.0-preview.3" />
+    <PackageVersion Include="Dumpify" Version="0.6.6" />
+  </ItemGroup>
+</Project>

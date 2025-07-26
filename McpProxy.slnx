@@ -1,0 +1,11 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/" />
+  <Folder Name="/src/McpProxy.console/">
+    <Project Path="src/McpProxy.console/McpProxy.Console.csproj" />
+  </Folder>
+</Solution>
