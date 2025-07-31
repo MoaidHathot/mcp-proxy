@@ -4,6 +4,10 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
+  <Folder Name="/Solution Items/">
+    <File Path="appsettings.json" />
+    <File Path="mcp-proxy.json" />
+  </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/McpProxy.console/">
     <Project Path="src/McpProxy.console/McpProxy.Console.csproj" />

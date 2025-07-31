@@ -1,0 +1,17 @@
+{
+  "Mcp": { 
+    "sample-mcp-server": {
+      "type": "stdio",
+      "title": "Sample MCP Server Title",
+      "description": "Sample MCP Server Description",
+      "command": "dotnet",
+      "arguments": ["run", "--project", "P:/Github/intro-to-mcp/src/sample-mcp-server"]
+    },
+    "microsoft-learn": {
+      "type": "http",
+      "title": "Microsoft Learn MCP",
+      "description": "Microsoft Learn MCP Server",
+      "url": "https://learn.microsoft.com/api/mcp"
+    }
+  }
+}

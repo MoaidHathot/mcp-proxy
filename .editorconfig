@@ -319,6 +319,8 @@ dotnet_diagnostic.CA2007.severity = none # disable ConfigureAwait enforcement
 [*{Converter,Converters}.cs]
 dotnet_diagnostic.IDE0072.severity = error # enforce add missing cases to switch expression
 
+[*.{cs,vb}]
+dotnet_diagnostic.CA1869.severity = none
 # XAML
 [*.xaml]
 indent_size = 4

@@ -1,0 +1,14 @@
+System.Collections.Generic.Dictionary`2+KeyCollection[System.String,McpProxy.Console.MCPInfo]Dictionary<str…
+   MCPInfo>    
+╭─────┬───────╮
+│ Key │ Value │
+╰─────┴───────╯MCPClientOptions      
+╭───────┬─────────────────╮
+│ Name  │ Value           │
+├───────┼─────────────────┤
+│ Tools │ Dictionary<str… │
+│       │ MCPServerConfi… │
+│       │ ╭─────┬───────╮ │
+│       │ │ Key │ Value │ │
+│       │ ╰─────┴───────╯ │
+╰───────┴─────────────────╯
