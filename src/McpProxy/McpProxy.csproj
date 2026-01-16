@@ -5,12 +5,40 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <!-- NuGet Package Configuration -->
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>mcpproxy</ToolCommandName>
+    <PackageId>McpProxy</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Moaid Hathot</Authors>
+    <Company>Moaid Hathot</Company>
+    <Product>MCP Proxy</Product>
+    <Description>An MCP (Model Context Protocol) proxy server that aggregates multiple MCP servers into a single endpoint. Connect to multiple backend MCP servers (STDIO or HTTP/SSE) and expose all their tools through one unified interface.</Description>
+    <PackageTags>mcp;model-context-protocol;proxy;ai;llm;tools;claude;copilot;opencode</PackageTags>
+    <PackageProjectUrl>https://github.com/MoaidHathot/mcp-proxy</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MoaidHathot/mcp-proxy</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- <PackageIcon>icon.png</PackageIcon> -->
+    <Copyright>Copyright (c) 2025 Moaid Hathot</Copyright>
+    
+    <!-- Package metadata -->
+    <PackageReleaseNotes>Initial release of MCP Proxy - aggregates multiple MCP servers into a single endpoint.</PackageReleaseNotes>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
     <PackageReference Include="Dumpify" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\..\icon.png')" />
   </ItemGroup>
 
 </Project>

@@ -10,14 +10,41 @@ A proxy server for the [Model Context Protocol (MCP)](https://modelcontextprotoc
 
 ## Installation
 
+### Install as a .NET Global Tool (Recommended)
+
 ```bash
+dotnet tool install -g McpProxy
+```
+
+After installation, you can run the proxy using:
+
+```bash
+mcpproxy stdio ./mcp-proxy.json
+mcpproxy sse ./mcp-proxy.json
+```
+
+### Run with dnx (No Installation Required)
+
+You can run McpProxy directly without installing it using `dnx`:
+
+```bash
+dnx McpProxy -- stdio ./mcp-proxy.json
+dnx McpProxy -- sse ./mcp-proxy.json
+```
+
+### Build from Source
+
+```bash
+git clone https://github.com/MoaidHathot/mcp-proxy.git
+cd mcp-proxy
 dotnet build src/McpProxy
+dotnet run --project src/McpProxy -- stdio ./mcp-proxy.json
 ```
 
 ## Usage
 
 ```bash
-McpProxy <transport> [config-path]
+mcpproxy <transport> [config-path]
 ```
 
 ### Arguments
@@ -37,16 +64,16 @@ McpProxy <transport> [config-path]
 
 ```bash
 # Run with STDIO transport (for use with Claude Desktop, etc.)
-McpProxy stdio
+mcpproxy stdio
 
 # Run with SSE transport (for HTTP clients)
-McpProxy sse
+mcpproxy sse
 
 # Run with STDIO and specific config file
-McpProxy stdio ./mcp-proxy.json
+mcpproxy stdio ./mcp-proxy.json
 
 # Run with SSE and specific config file
-McpProxy sse /path/to/config.json
+mcpproxy sse /path/to/config.json
 ```
 
 ## Configuration
@@ -55,31 +82,23 @@ Create a `mcp-proxy.json` file to configure the backend MCP servers. See [`mcp-p
 
 ```json
 {
-  "Mcp": {
-    "azure-mcp": {
+  "Mcp": { 
+    "sample-mcp-server": {
       "type": "stdio",
       "title": "Azure MCP Server",
-      "description": "Official Microsoft Azure MCP Server",
-      "command": "azmcp",
-      "arguments": ["server", "start"]
+      "description": "The official Azure MCP Server",
+      "command": "dnx",
+      "arguments": ["Azure.Mcp@2.0.0-beta.10", "--yes", "--", "server", "start"]
     },
-    "context7": {
+    "microsoft-learn": {
       "type": "http",
-      "title": "Context7 Documentation",
-      "description": "Up-to-date code documentation for libraries",
-      "url": "https://mcp.context7.com/mcp"
+      "title": "Microsoft Learn MCP",
+      "description": "Microsoft Learn MCP Server",
+      "url": "https://learn.microsoft.com/api/mcp"
     }
   }
 }
 ```
-
-### Prerequisites for Sample Configuration
-
-- **Azure MCP Server**: Install as a .NET global tool:
-  ```bash
-  dotnet tool install -g azure.mcp
-  ```
-- **Context7**: No installation required (remote HTTP server)
 
 ### Configuration Options
 
@@ -104,29 +123,106 @@ Create a `mcp-proxy.json` file to configure the backend MCP servers. See [`mcp-p
 
 > **Note**: Use `"sse"` for servers that only support Server-Sent Events (most current MCP servers). Use `"http"` for servers that support the newer Streamable HTTP transport (auto-detects and falls back to SSE).
 
-## Using with Claude Desktop
+## Using with OpenCode
 
-Add the following to your Claude Desktop configuration (`claude_desktop_config.json`):
+Add the following to your OpenCode configuration file (`opencode.json`):
+
+### Using the installed dotnet tool
 
 ```json
 {
-  "mcpServers": {
+  "mcp": {
     "mcp-proxy": {
-      "command": "dotnet",
-      "args": ["run", "--project", "/path/to/mcp-proxy/src/McpProxy", "--", "stdio", "/path/to/mcp-proxy.json"]
+      "type": "local",
+      "command": ["mcpproxy", "stdio", "/path/to/mcp-proxy.json"],
+      "enabled": true
     }
   }
 }
 ```
 
-Or if you've published the executable:
+### Using dnx (no installation required)
+
+```json
+{
+  "mcp": {
+    "mcp-proxy": {
+      "type": "local",
+      "command": ["dnx", "McpProxy", "--", "stdio", "/path/to/mcp-proxy.json"],
+      "enabled": true
+    }
+  }
+}
+```
+
+## Using with GitHub Copilot CLI
+
+Add the following to your VS Code settings (`settings.json`) or workspace settings:
+
+### Using the installed dotnet tool
+
+```json
+{
+  "github.copilot.chat.mcp.servers": {
+    "mcp-proxy": {
+      "command": "mcpproxy",
+      "args": ["stdio", "/path/to/mcp-proxy.json"]
+    }
+  }
+}
+```
+
+### Using dnx (no installation required)
+
+```json
+{
+  "github.copilot.chat.mcp.servers": {
+    "mcp-proxy": {
+      "command": "dnx",
+      "args": ["McpProxy", "--", "stdio", "/path/to/mcp-proxy.json"]
+    }
+  }
+}
+```
+
+Alternatively, create a `.vscode/mcp.json` file in your project:
+
+```json
+{
+  "servers": {
+    "mcp-proxy": {
+      "command": "mcpproxy",
+      "args": ["stdio", "/path/to/mcp-proxy.json"]
+    }
+  }
+}
+```
+
+## Using with Claude Desktop
+
+Add the following to your Claude Desktop configuration (`claude_desktop_config.json`):
+
+### Using the installed dotnet tool
 
 ```json
 {
   "mcpServers": {
     "mcp-proxy": {
-      "command": "/path/to/McpProxy",
+      "command": "mcpproxy",
       "args": ["stdio", "/path/to/mcp-proxy.json"]
+    }
+  }
+}
+```
+
+### Using dnx (no installation required)
+
+```json
+{
+  "mcpServers": {
+    "mcp-proxy": {
+      "command": "dnx",
+      "args": ["McpProxy", "--", "stdio", "/path/to/mcp-proxy.json"]
     }
   }
 }
@@ -137,19 +233,19 @@ Or if you've published the executable:
 Start the proxy in SSE mode:
 
 ```bash
-McpProxy sse ./mcp-proxy.json
+mcpproxy sse ./mcp-proxy.json
 ```
 
 The server will start on the default ASP.NET Core port (typically `http://localhost:5000`). You can configure the port using standard ASP.NET Core configuration:
 
 ```bash
-McpProxy sse ./mcp-proxy.json --urls "http://localhost:8080"
+mcpproxy sse ./mcp-proxy.json --urls "http://localhost:8080"
 ```
 
 Or via environment variable:
 
 ```bash
-ASPNETCORE_URLS=http://localhost:8080 McpProxy sse ./mcp-proxy.json
+ASPNETCORE_URLS=http://localhost:8080 mcpproxy sse ./mcp-proxy.json
 ```
 
 ## License
