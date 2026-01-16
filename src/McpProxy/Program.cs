@@ -1,55 +1,141 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using McpProxy.Console;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
-var builder = Host.CreateApplicationBuilder(args);
+// Parse command-line arguments
+var config = ParseArguments(args);
 
-// builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
-
-var mcpClientOptions = new MCPClientOptions();
-
-builder.Configuration.AddEnvironmentVariables();
-builder.Configuration.GetSection("Proxy").Bind(mcpClientOptions);
-// builder.Services.AddOptions<MCPClientOptions>().Bind(builder.Configuration.GetSection("Proxy")).ValidateOnStart();
-
-var configPath = Environment.GetEnvironmentVariable("MCP_PROXY_CONFIG_PATH")!;
-
-if(builder.Environment.IsDevelopment())
+if (config.TransportType == ServerTransportType.Stdio)
 {
-    configPath = "mcp-proxy.json";
+    await RunStdioServer(args, config).ConfigureAwait(false);
+}
+else
+{
+    await RunSseServer(args, config).ConfigureAwait(false);
 }
 
-var options = new JsonSerializerOptions
+async Task RunStdioServer(string[] args, ProxyConfig proxyConfig)
 {
-    PropertyNameCaseInsensitive = true
-};
+    var builder = Host.CreateApplicationBuilder(args);
+    var clients = await SetupMcpClients(proxyConfig.ConfigPath, builder.Environment).ConfigureAwait(false);
 
-var jsonConfig = File.ReadAllText(configPath);
-var mcpConfig = JsonSerializer.Deserialize<McpProxyConfig>(jsonConfig, options);
+    builder.Services
+        .AddMcpServer()
+        .WithStdioServerTransport()
+        .WithListToolsHandler((context, token) => ListProxyTools(clients, context, token))
+        .WithCallToolHandler((context, token) => CallProxyTools(clients, context, token));
 
-mcpClientOptions.Tools = mcpConfig?.Mcp ?? [];
+    await builder.Build().RunAsync().ConfigureAwait(false);
+}
 
-var clients = await CreateMcpClients(mcpClientOptions).ConfigureAwait(false);
-// builder.Services.AddSingleton(new MCPClientComposite(clients));
+async Task RunSseServer(string[] args, ProxyConfig proxyConfig)
+{
+    var builder = WebApplication.CreateBuilder(args);
+    var clients = await SetupMcpClients(proxyConfig.ConfigPath, builder.Environment).ConfigureAwait(false);
 
-builder.Services
-    .AddMcpServer()
-    .WithStdioServerTransport()
-    .WithListToolsHandler(ListProxyTools)
-    .WithCallToolHandler(CallProxyTools);
+    builder.Services
+        .AddMcpServer()
+        .WithHttpTransport()
+        .WithListToolsHandler((context, token) => ListProxyTools(clients, context, token))
+        .WithCallToolHandler((context, token) => CallProxyTools(clients, context, token));
 
-async ValueTask<CallToolResult> CallProxyTools(RequestContext<CallToolRequestParams> context, CancellationToken token)
+    var app = builder.Build();
+
+    app.MapMcp();
+
+    // System.Console.WriteLine($"MCP Proxy SSE server started");
+
+    await app.RunAsync().ConfigureAwait(false);
+}
+
+async Task<IReadOnlyDictionary<string, McpInfo>> SetupMcpClients(string? configPath, IHostEnvironment environment)
+{
+    var mcpClientOptions = new MCPClientOptions();
+
+    configPath ??= Environment.GetEnvironmentVariable("MCP_PROXY_CONFIG_PATH");
+
+    if (string.IsNullOrEmpty(configPath) && environment.IsDevelopment())
+    {
+        configPath = "mcp-proxy.json";
+    }
+
+    if (string.IsNullOrEmpty(configPath))
+    {
+        throw new InvalidOperationException("Config path not provided. Use second argument or set MCP_PROXY_CONFIG_PATH environment variable.");
+    }
+
+    var options = new JsonSerializerOptions
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    var jsonConfig = File.ReadAllText(configPath);
+    var mcpConfig = JsonSerializer.Deserialize<McpProxyConfig>(jsonConfig, options);
+
+    mcpClientOptions.Tools = mcpConfig?.Mcp ?? [];
+
+    return await CreateMcpClients(mcpClientOptions).ConfigureAwait(false);
+}
+
+ProxyConfig ParseArguments(string[] args)
+{
+    if (args.Length == 0 || args[0] == "--help" || args[0] == "-h")
+    {
+        PrintHelp();
+        Environment.Exit(0);
+    }
+
+    var transportType = args[0].ToLowerInvariant() switch
+    {
+        "stdio" => ServerTransportType.Stdio,
+        "sse" => ServerTransportType.Sse,
+        _ => throw new ArgumentException($"Invalid transport type: {args[0]}. Valid values are 'stdio' or 'sse'.")
+    };
+
+    var configPath = args.Length > 1 ? args[1] : null;
+
+    return new ProxyConfig
+    {
+        TransportType = transportType,
+        ConfigPath = configPath
+    };
+}
+
+void PrintHelp()
+{
+    System.Console.WriteLine("""
+        MCP Proxy - A proxy server for Model Context Protocol
+
+        Usage: McpProxy <transport> [config-path]
+
+        Arguments:
+          transport    Server transport type: 'stdio' or 'sse'
+          config-path  Path to mcp-proxy.json (optional, uses MCP_PROXY_CONFIG_PATH env var if not provided)
+
+        Environment Variables:
+          MCP_PROXY_CONFIG_PATH   Path to the mcp-proxy.json configuration file
+
+        Examples:
+          McpProxy stdio                      # Run with stdio transport
+          McpProxy sse                        # Run with SSE transport
+          McpProxy stdio ./mcp-proxy.json     # Run with stdio and specific config
+          McpProxy sse /path/to/config.json   # Run with SSE and specific config
+        """);
+}
+
+async ValueTask<CallToolResult> CallProxyTools(
+    IReadOnlyDictionary<string, McpInfo> clients,
+    RequestContext<CallToolRequestParams> context,
+    CancellationToken token)
 {
     var clientTools = await Task.WhenAll(
-            clients.Select(async p => {
-                    var tools = await p.Value.Client.ListToolsAsync().ConfigureAwait(false);
-                    return (client: p.Value.Client, tools: tools);
-                }
+            clients.Select(async p =>
+            {
+                var tools = await p.Value.Client.ListToolsAsync().ConfigureAwait(false);
+                return (client: p.Value.Client, tools: tools);
+            }
             )).ConfigureAwait(false);
 
     var pair = clientTools.First(p => p.tools.Any(t => string.Equals(t.Name, context.Params!.Name, StringComparison.InvariantCultureIgnoreCase)));
@@ -58,7 +144,10 @@ async ValueTask<CallToolResult> CallProxyTools(RequestContext<CallToolRequestPar
     return result;
 }
 
-async ValueTask<ListToolsResult> ListProxyTools(RequestContext<ListToolsRequestParams> context, CancellationToken token)
+async ValueTask<ListToolsResult> ListProxyTools(
+    IReadOnlyDictionary<string, McpInfo> clients,
+    RequestContext<ListToolsRequestParams> context,
+    CancellationToken token)
 {
     var clientTools = await Task.WhenAll(clients.Select(p => p.Value.Client.ListToolsAsync().AsTask())).ConfigureAwait(false);
     var tools = clientTools.SelectMany(t => t.Select(tool => new Tool
@@ -82,9 +171,9 @@ async Task<IReadOnlyDictionary<string, McpInfo>> CreateMcpClients(MCPClientOptio
 {
     var map = new Dictionary<string, McpInfo>();
 
-    foreach(var mcp in options.Tools)
+    foreach (var mcp in options.Tools)
     {
-        if(string.Equals(mcp.Value.Type, "stdio", StringComparison.InvariantCultureIgnoreCase))
+        if (string.Equals(mcp.Value.Type, "stdio", StringComparison.InvariantCultureIgnoreCase))
         {
             var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
             {
@@ -93,18 +182,24 @@ async Task<IReadOnlyDictionary<string, McpInfo>> CreateMcpClients(MCPClientOptio
                 Arguments = mcp.Value.Arguments,
             });
 
-            var client = await McpClientFactory.CreateAsync(clientTransport).ConfigureAwait(false);
+            var client = await McpClient.CreateAsync(clientTransport).ConfigureAwait(false);
             map.Add(mcp.Key, new McpInfo(mcp.Value, client));
         }
-        else if(string.Equals(mcp.Value.Type, "http", StringComparison.InvariantCultureIgnoreCase) || string.Equals(mcp.Value.Type, "sse", StringComparison.InvariantCultureIgnoreCase))
+        else if (string.Equals(mcp.Value.Type, "http", StringComparison.InvariantCultureIgnoreCase) || string.Equals(mcp.Value.Type, "sse", StringComparison.InvariantCultureIgnoreCase))
         {
-            var clientTransport = new SseClientTransport(new SseClientTransportOptions
+            // Use SSE mode for "sse" type, AutoDetect (which tries StreamableHttp first) for "http"
+            var transportMode = string.Equals(mcp.Value.Type, "sse", StringComparison.InvariantCultureIgnoreCase)
+                ? HttpTransportMode.Sse
+                : HttpTransportMode.AutoDetect;
+
+            var clientTransport = new HttpClientTransport(new HttpClientTransportOptions
             {
                 Endpoint = new Uri(mcp.Value.Url!),
                 Name = mcp.Key,
+                TransportMode = transportMode,
             });
 
-            var client = await McpClientFactory.CreateAsync(clientTransport).ConfigureAwait(false);
+            var client = await McpClient.CreateAsync(clientTransport).ConfigureAwait(false);
             map.Add(mcp.Key, new McpInfo(mcp.Value, client));
         }
         else
@@ -116,4 +211,14 @@ async Task<IReadOnlyDictionary<string, McpInfo>> CreateMcpClients(MCPClientOptio
     return map;
 }
 
-await builder.Build().RunAsync().ConfigureAwait(false);
+enum ServerTransportType
+{
+    Stdio,
+    Sse
+}
+
+class ProxyConfig
+{
+    public ServerTransportType TransportType { get; set; } = ServerTransportType.Stdio;
+    public string? ConfigPath { get; set; }
+}

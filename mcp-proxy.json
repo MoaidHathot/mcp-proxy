@@ -2,10 +2,10 @@
   "Mcp": { 
     "sample-mcp-server": {
       "type": "stdio",
-      "title": "Sample MCP Server Title",
-      "description": "Sample MCP Server Description",
-      "command": "dotnet",
-      "arguments": ["run", "--project", "P:/Github/intro-to-mcp/src/sample-mcp-server"]
+      "title": "Azure MCP Server",
+      "description": "The official Azure MCP Server",
+      "command": "dnx",
+      "arguments": ["Azure.Mcp@2.0.0-beta.10", "--yes", "--", "server", "start"]
     },
     "microsoft-learn": {
       "type": "http",
