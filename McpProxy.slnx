@@ -10,6 +10,6 @@
   </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/McpProxy.console/">
-    <Project Path="src/McpProxy.console/McpProxy.Console.csproj" />
+    <Project Path="src/McpProxy/McpProxy.csproj" />
   </Folder>
 </Solution>
