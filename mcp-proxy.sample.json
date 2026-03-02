@@ -140,7 +140,38 @@
       "url": "https://learn.microsoft.com/api/mcp"
     },
 
-    // Example 6: Disabled server (won't be connected)
+    // Example 6: Azure-protected backend with client credentials
+    "azure-protected-api": {
+      "type": "http",
+      "title": "Azure Protected API",
+      "description": "Backend MCP server protected by Azure AD",
+      "url": "https://my-mcp-server.azurewebsites.net/mcp",
+      "auth": {
+        "type": "AzureAdClientCredentials",
+        "azureAd": {
+          "tenantId": "contoso.onmicrosoft.com",
+          "clientId": "00000000-0000-0000-0000-000000000000",
+          "clientSecret": "env:BACKEND_CLIENT_SECRET",
+          "scopes": ["api://backend-api/.default"]
+        }
+      }
+    },
+
+    // Example 7: Backend using managed identity (for Azure-hosted deployments)
+    "azure-managed-identity": {
+      "type": "http",
+      "title": "Internal Azure API",
+      "url": "https://internal-api.azurewebsites.net/mcp",
+      "auth": {
+        "type": "AzureAdManagedIdentity",
+        "azureAd": {
+          "scopes": ["api://internal-api/.default"]
+        }
+      },
+      "enabled": false
+    },
+
+    // Example 8: Disabled server (won't be connected)
     "disabled-server": {
       "type": "stdio",
       "command": "node",

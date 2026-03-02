@@ -1,0 +1,46 @@
+{
+  "$schema": "../../mcp-proxy.schema.json",
+  "proxy": {
+    "serverInfo": {
+      "name": "HTTP API Key Auth Example",
+      "version": "1.0.0",
+      "instructions": "This proxy is secured with API key authentication."
+    },
+    "routing": {
+      "mode": "unified",
+      "basePath": "/mcp"
+    },
+    "authentication": {
+      "enabled": true,
+      "type": "apiKey",
+      "apiKey": {
+        "header": "X-API-Key",
+        "queryParameter": "api_key",
+        "value": "env:MCP_PROXY_API_KEY"
+      }
+    },
+    "logging": {
+      "logRequests": true,
+      "logResponses": false,
+      "sensitiveDataMask": true
+    }
+  },
+  "mcp": {
+    "filesystem": {
+      "type": "stdio",
+      "title": "Filesystem Server",
+      "description": "Provides file system access tools",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "."],
+      "enabled": true
+    },
+    "time": {
+      "type": "stdio",
+      "title": "Time Server",
+      "description": "Provides time and timezone utilities",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-time"],
+      "enabled": true
+    }
+  }
+}

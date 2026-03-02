@@ -1,0 +1,278 @@
+{
+  "$schema": "../../mcp-proxy.schema.json",
+  "proxy": {
+    "serverInfo": {
+      "name": "Enterprise MCP Proxy",
+      "version": "1.0.0",
+      "instructions": "Enterprise-grade MCP Proxy with authentication, authorization, audit logging, rate limiting, telemetry, and content filtering."
+    },
+    "routing": {
+      "mode": "unified",
+      "basePath": "/mcp"
+    },
+    "authentication": {
+      "enabled": true,
+      "type": "azureAd",
+      "azureAd": {
+        "tenantId": "env:AZURE_TENANT_ID",
+        "clientId": "env:AZURE_CLIENT_ID",
+        "audience": "env:AZURE_CLIENT_ID",
+        "requiredScopes": ["MCP.Access"],
+        "requiredRoles": null
+      }
+    },
+    "logging": {
+      "logRequests": true,
+      "logResponses": false,
+      "sensitiveDataMask": true
+    },
+    "caching": {
+      "tools": {
+        "enabled": true,
+        "ttlSeconds": 300
+      }
+    },
+    "capabilities": {
+      "client": {
+        "sampling": true,
+        "elicitation": true,
+        "roots": true
+      }
+    },
+    "telemetry": {
+      "enabled": true,
+      "serviceName": "mcp-proxy-enterprise",
+      "serviceVersion": "1.0.0",
+      "metrics": {
+        "enabled": true,
+        "consoleExporter": false,
+        "otlpEndpoint": "env:OTEL_EXPORTER_OTLP_ENDPOINT"
+      },
+      "tracing": {
+        "enabled": true,
+        "consoleExporter": false,
+        "otlpEndpoint": "env:OTEL_EXPORTER_OTLP_ENDPOINT"
+      }
+    }
+  },
+  "mcp": {
+    "filesystem": {
+      "type": "stdio",
+      "title": "Filesystem Server",
+      "description": "Secure file system access with role-based permissions",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "/data"],
+      "enabled": true,
+      "tools": {
+        "prefix": "fs",
+        "prefixSeparator": "_",
+        "filter": {
+          "mode": "none"
+        }
+      },
+      "hooks": {
+        "preInvoke": [
+          {
+            "type": "logging",
+            "priority": -1000,
+            "config": {
+              "logLevel": "information",
+              "logArguments": true,
+              "logTimestamp": true
+            }
+          },
+          {
+            "type": "audit",
+            "priority": -950,
+            "config": {
+              "logDestination": "file",
+              "filePath": "/var/log/mcp-proxy/audit.log",
+              "includeUser": true,
+              "includeTimestamp": true,
+              "includeArguments": true
+            }
+          },
+          {
+            "type": "rateLimit",
+            "priority": -900,
+            "config": {
+              "maxRequests": 100,
+              "windowSeconds": 60,
+              "scope": "perUser"
+            }
+          },
+          {
+            "type": "timeout",
+            "priority": -800,
+            "config": {
+              "timeoutSeconds": 30
+            }
+          },
+          {
+            "type": "authorization",
+            "priority": -700,
+            "config": {
+              "requiredRoles": ["MCP.FileAdmin"],
+              "allowedTools": ["write_file", "create_directory", "move_file", "delete_file"]
+            }
+          }
+        ],
+        "postInvoke": [
+          {
+            "type": "contentFilter",
+            "priority": 800,
+            "config": {
+              "patterns": [
+                "password",
+                "secret",
+                "api[_-]?key",
+                "token",
+                "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b",
+                "\\b\\d{3}-\\d{2}-\\d{4}\\b",
+                "\\b\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}\\b"
+              ],
+              "action": "redact",
+              "replacement": "[REDACTED]",
+              "caseInsensitive": true
+            }
+          },
+          {
+            "type": "audit",
+            "priority": 950,
+            "config": {
+              "logDestination": "file",
+              "filePath": "/var/log/mcp-proxy/audit.log",
+              "includeResult": false,
+              "includeDuration": true
+            }
+          },
+          {
+            "type": "metrics",
+            "priority": 900,
+            "config": {
+              "recordDuration": true,
+              "recordErrors": true,
+              "attributes": {
+                "server": "filesystem"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "database": {
+      "type": "http",
+      "title": "Database Server",
+      "description": "Protected database access via Azure AD",
+      "url": "https://db-mcp.internal.example.com/mcp",
+      "enabled": false,
+      "auth": {
+        "type": "AzureAdOnBehalfOf",
+        "azureAd": {
+          "tenantId": "env:AZURE_TENANT_ID",
+          "clientId": "env:AZURE_CLIENT_ID",
+          "clientSecret": "env:AZURE_CLIENT_SECRET",
+          "scopes": ["api://db-mcp/.default"]
+        }
+      },
+      "tools": {
+        "prefix": "db",
+        "prefixSeparator": "_",
+        "filter": {
+          "mode": "denylist",
+          "patterns": ["drop_*", "truncate_*", "delete_all_*"]
+        }
+      },
+      "hooks": {
+        "preInvoke": [
+          {
+            "type": "authorization",
+            "config": {
+              "requiredRoles": ["MCP.DatabaseAdmin"],
+              "allowedTools": ["execute_ddl", "modify_schema"]
+            }
+          },
+          {
+            "type": "rateLimit",
+            "config": {
+              "maxRequests": 50,
+              "windowSeconds": 60,
+              "scope": "perUser"
+            }
+          }
+        ]
+      }
+    },
+    "analytics": {
+      "type": "http",
+      "title": "Analytics Server",
+      "description": "Read-only analytics and reporting tools",
+      "url": "https://analytics-mcp.internal.example.com/mcp",
+      "enabled": false,
+      "auth": {
+        "type": "AzureAdManagedIdentity",
+        "azureAd": {
+          "scopes": ["api://analytics-mcp/.default"]
+        }
+      },
+      "tools": {
+        "prefix": "analytics",
+        "prefixSeparator": "_",
+        "filter": {
+          "mode": "allowlist",
+          "patterns": ["query_*", "report_*", "export_*"]
+        }
+      },
+      "hooks": {
+        "preInvoke": [
+          {
+            "type": "rateLimit",
+            "config": {
+              "maxRequests": 20,
+              "windowSeconds": 60,
+              "scope": "global"
+            }
+          }
+        ]
+      }
+    },
+    "memory": {
+      "type": "stdio",
+      "title": "Knowledge Graph",
+      "description": "Persistent knowledge storage",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-memory"],
+      "enabled": true,
+      "tools": {
+        "prefix": "kg",
+        "prefixSeparator": "_"
+      },
+      "hooks": {
+        "preInvoke": [
+          {
+            "type": "audit",
+            "config": {
+              "logDestination": "file",
+              "filePath": "/var/log/mcp-proxy/kg-audit.log",
+              "includeUser": true,
+              "includeArguments": true
+            }
+          }
+        ],
+        "postInvoke": [
+          {
+            "type": "outputTransform",
+            "config": {
+              "transforms": [
+                {
+                  "pattern": "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b",
+                  "replacement": "[EMAIL]"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

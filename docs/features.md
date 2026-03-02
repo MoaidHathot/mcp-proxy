@@ -281,6 +281,23 @@ Hooks allow you to execute custom logic before and after tool calls. Use cases i
 
 ### Built-in Hooks
 
+MCP Proxy provides several built-in hooks for common enterprise scenarios:
+
+| Hook Type | Purpose | Priority |
+|-----------|---------|----------|
+| `logging` | Log tool invocations | -1000 |
+| `audit` | Compliance audit trail | -950 (pre), 950 (post) |
+| `rateLimit` | Prevent abuse, protect backends | -900 |
+| `timeout` | Enforce maximum execution time | -800 |
+| `authorization` | Role/scope-based access control | -700 |
+| `retry` | Auto-retry transient failures | 100 |
+| `contentFilter` | Block/redact prohibited content | 800 |
+| `metrics` | Detailed observability metrics | 900 |
+| `inputTransform` | Transform tool inputs | 0 |
+| `outputTransform` | Transform tool outputs | 0 |
+
+Lower priority values execute first for pre-invoke hooks, and last for post-invoke hooks.
+
 #### Logging Hook
 
 Logs tool invocations with configurable detail level.
@@ -302,13 +319,283 @@ Logs tool invocations with configurable detail level.
 | `logArguments` | bool | `false` | Include tool arguments in log |
 | `logResult` | bool | `false` | Include tool result in log |
 
-**Output example:**
+#### Rate Limiting Hook
 
+Prevents abuse by limiting request rates per user/client.
+
+```json
+{
+  "type": "rateLimit",
+  "config": {
+    "maxRequests": 100,
+    "windowSeconds": 60,
+    "keyType": "client",
+    "errorMessage": "Rate limit exceeded. Please try again later."
+  }
+}
 ```
-[INF] Tool invocation: server=github, tool=create_issue
-[DBG] Tool arguments: {"title": "Bug fix", "body": "..."}
-[INF] Tool completed: server=github, tool=create_issue, duration=245ms
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `maxRequests` | int | `100` | Maximum requests per window |
+| `windowSeconds` | int | `60` | Time window in seconds |
+| `keyType` | string | `"client"` | Rate limit key: `client`, `tool`, `server`, `combined` |
+| `errorMessage` | string | `"Rate limit exceeded..."` | Error message when limit exceeded |
+
+**Key Types:**
+- `client` - Rate limit by client/principal ID
+- `tool` - Rate limit by tool name
+- `server` - Rate limit by server name
+- `combined` - Rate limit by combination of client, server, and tool
+
+**Behavior:**
+- Throws `RateLimitExceededException` when limit exceeded
+- Uses `IMemoryCache` for rate tracking (can swap for distributed cache)
+- User identity extracted from `AuthenticationResult.PrincipalId`
+
+#### Timeout Hook
+
+Enforces maximum execution time for tool calls.
+
+```json
+{
+  "type": "timeout",
+  "config": {
+    "defaultTimeoutSeconds": 30,
+    "perTool": {
+      "long_running_tool": 120,
+      "quick_tool": 5
+    }
+  }
+}
 ```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `defaultTimeoutSeconds` | int | `30` | Default timeout for all tools |
+| `perTool` | object | `{}` | Per-tool timeout overrides (keys can be exact names or wildcard patterns) |
+
+**Behavior:**
+- Creates a linked `CancellationTokenSource` with timeout
+- Tool calls exceeding timeout are cancelled
+- Original cancellation token is preserved
+
+#### Authorization Hook
+
+Fine-grained role and scope-based access control integrating with Azure AD.
+
+```json
+{
+  "type": "authorization",
+  "config": {
+    "requireAuthentication": true,
+    "defaultAllow": false,
+    "mode": "anyOf",
+    "rules": [
+      {
+        "toolPattern": "admin_*",
+        "serverPattern": "*",
+        "requiredRoles": ["admin", "superuser"],
+        "requiredScopes": [],
+        "allow": true
+      },
+      {
+        "toolPattern": "read_*",
+        "requiredRoles": ["reader", "admin"],
+        "allow": true
+      },
+      {
+        "toolPattern": "*",
+        "requiredRoles": ["user"],
+        "allow": true
+      }
+    ]
+  }
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `requireAuthentication` | bool | `false` | Require authenticated user |
+| `defaultAllow` | bool | `false` | Allow when no rules match |
+| `mode` | string | `"anyOf"` | `anyOf` or `allOf` for multiple rules |
+| `rules` | array | `[]` | Authorization rules |
+
+**Rule Properties:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `toolPattern` | string | Tool name pattern (supports `*` wildcards) |
+| `serverPattern` | string | Server name pattern (supports `*` wildcards) |
+| `requiredRoles` | string[] | Required roles (any match grants access) |
+| `requiredScopes` | string[] | Required scopes (any match grants access) |
+| `allow` | bool | Allow or deny when matched |
+
+**Behavior:**
+- Throws `AuthorizationException` when access denied
+- Roles extracted from `AuthenticationResult.Properties["roles"]`
+- Scopes extracted from `AuthenticationResult.Properties["scopes"]`
+- Integrates with Azure AD when using OAuth/OIDC authentication
+
+#### Retry Hook
+
+Automatically retries transient failures with exponential backoff.
+
+```json
+{
+  "type": "retry",
+  "config": {
+    "maxRetries": 3,
+    "initialDelayMs": 100,
+    "maxDelayMs": 5000,
+    "backoffMultiplier": 2.0,
+    "retryablePatterns": ["timeout", "connection", "unavailable", "503", "429"]
+  }
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `maxRetries` | int | `3` | Maximum retry attempts |
+| `initialDelayMs` | int | `100` | Initial delay between retries |
+| `maxDelayMs` | int | `5000` | Maximum delay between retries |
+| `backoffMultiplier` | double | `2.0` | Exponential backoff multiplier |
+| `retryablePatterns` | string[] | `[...]` | Error patterns that trigger retry |
+
+**Behavior:**
+- Sets `context.Items["McpProxy.Retry.Requested"] = true` on transient errors
+- Proxy server handles retry loop with exponential backoff
+- Jitter added to prevent thundering herd
+
+#### Metrics Hook
+
+Records detailed observability metrics using OpenTelemetry.
+
+```json
+{
+  "type": "metrics",
+  "config": {
+    "recordTiming": true,
+    "recordSizes": true,
+    "recordErrors": true
+  }
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `recordTiming` | bool | `true` | Record tool call durations |
+| `recordSizes` | bool | `true` | Record request/response sizes |
+| `recordErrors` | bool | `true` | Record error counts |
+
+**Metrics emitted:**
+- `mcp_proxy_hook_tool_call_duration_ms` - Histogram of call durations
+- `mcp_proxy_hook_tool_call_count` - Counter of tool calls
+- `mcp_proxy_hook_tool_call_errors` - Counter of errors
+- `mcp_proxy_hook_request_size_bytes` - Histogram of request sizes
+- `mcp_proxy_hook_response_size_bytes` - Histogram of response sizes
+
+#### Audit Hook
+
+Compliance audit trail for tool invocations.
+
+```json
+{
+  "type": "audit",
+  "config": {
+    "level": "standard",
+    "includeSensitiveData": false,
+    "sensitiveArguments": ["password", "secret", "token", "key"],
+    "includeCorrelationId": true,
+    "maxValueLength": 500,
+    "excludeTools": ["health_check", "ping"],
+    "includeTools": []
+  }
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `level` | string | `"standard"` | `basic`, `standard`, or `detailed` |
+| `includeSensitiveData` | bool | `false` | Include sensitive args in logs |
+| `sensitiveArguments` | string[] | `[...]` | Argument names to redact |
+| `includeCorrelationId` | bool | `true` | Add correlation ID for tracking |
+| `maxValueLength` | int | `500` | Max length of logged values |
+| `excludeTools` | string[] | `[]` | Tools to exclude from auditing |
+| `includeTools` | string[] | `[]` | Tools to include (empty = all) |
+
+**Audit Levels:**
+- `basic` - Tool name, server, timestamp, user
+- `standard` - Basic + arguments (sensitive redacted)
+- `detailed` - Standard + full response content
+
+**Log format:**
+```
+[AUDIT] Tool=create_file Server=filesystem User=alice@contoso.com 
+        CorrelationId=abc123 Timestamp=2024-01-15T10:30:00Z
+        Arguments={path:"docs/readme.md", content:"[500 chars]"}
+        Duration=245ms Success=true
+```
+
+#### Content Filter Hook
+
+Blocks or redacts prohibited content in responses.
+
+```json
+{
+  "type": "contentFilter",
+  "config": {
+    "useDefaultPatterns": true,
+    "patterns": [
+      {
+        "name": "ssn",
+        "pattern": "\\d{3}-\\d{2}-\\d{4}",
+        "mode": "redact",
+        "redactReplacement": "[SSN-REDACTED]"
+      },
+      {
+        "name": "private_key",
+        "pattern": "-----BEGIN.*PRIVATE KEY-----",
+        "mode": "block",
+        "blockMessage": "Private keys are not allowed in responses"
+      },
+      {
+        "name": "credit_card",
+        "pattern": "\\b\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}\\b",
+        "mode": "redact",
+        "redactReplacement": "[CARD-REDACTED]"
+      }
+    ]
+  }
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `useDefaultPatterns` | bool | `true` | Include built-in patterns |
+| `patterns` | array | `[]` | Custom filter patterns |
+
+**Pattern Properties:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `name` | string | Pattern identifier for logging |
+| `pattern` | string | Regex pattern to match |
+| `mode` | string | `block` or `redact` |
+| `redactReplacement` | string | Replacement text for redaction |
+| `blockMessage` | string | Error message when blocking |
+
+**Default Patterns (when `useDefaultPatterns: true`):**
+- Social Security Numbers (SSN)
+- Credit card numbers
+- API keys and tokens
+- Private keys
+- AWS access keys
+
+**Behavior:**
+- `redact` mode: Replaces matched content with replacement text
+- `block` mode: Returns error result with block message
+- Processes all text content in response
 
 #### Input Transform Hook
 
@@ -494,3 +781,121 @@ Remove sensitive data from responses:
   }
 }
 ```
+
+#### Enterprise Security Configuration
+
+A complete example for enterprise deployments with rate limiting, authorization, content filtering, and audit logging:
+
+```json
+{
+  "mcp": {
+    "production-server": {
+      "type": "http",
+      "url": "https://mcp.internal.example.com",
+      "hooks": {
+        "preInvoke": [
+          {
+            "type": "audit",
+            "config": {
+              "level": "standard",
+              "includeCorrelationId": true
+            }
+          },
+          {
+            "type": "rateLimit",
+            "config": {
+              "maxRequests": 100,
+              "windowSeconds": 60,
+              "keyType": "client"
+            }
+          },
+          {
+            "type": "timeout",
+            "config": {
+              "defaultTimeoutSeconds": 30,
+              "perTool": {
+                "generate_report": 300
+              }
+            }
+          },
+          {
+            "type": "authorization",
+            "config": {
+              "requireAuthentication": true,
+              "defaultAllow": false,
+              "rules": [
+                {
+                  "toolPattern": "admin_*",
+                  "requiredRoles": ["admin"]
+                },
+                {
+                  "toolPattern": "write_*",
+                  "requiredRoles": ["editor", "admin"]
+                },
+                {
+                  "toolPattern": "read_*",
+                  "requiredRoles": ["reader", "editor", "admin"]
+                }
+              ]
+            }
+          }
+        ],
+        "postInvoke": [
+          {
+            "type": "retry",
+            "config": {
+              "maxRetries": 3,
+              "retryablePatterns": ["timeout", "503", "connection"]
+            }
+          },
+          {
+            "type": "contentFilter",
+            "config": {
+              "useDefaultPatterns": true,
+              "patterns": [
+                {
+                  "name": "internal_ip",
+                  "pattern": "10\\.\\d+\\.\\d+\\.\\d+",
+                  "mode": "redact",
+                  "redactReplacement": "[INTERNAL-IP]"
+                }
+              ]
+            }
+          },
+          {
+            "type": "metrics",
+            "config": {
+              "recordTiming": true,
+              "recordSizes": true,
+              "recordErrors": true
+            }
+          },
+          {
+            "type": "audit",
+            "config": {
+              "level": "standard"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+This configuration provides:
+- **Rate limiting**: Max 100 requests per minute per user
+- **Timeouts**: 30s default, 5 minutes for report generation
+- **Authorization**: Role-based access with admin/editor/reader roles
+- **Retry**: Auto-retry on transient failures (timeout, 503, connection errors)
+- **Content filtering**: Redact SSNs, credit cards, private keys, and internal IPs
+- **Metrics**: Full observability with timing and size metrics
+- **Audit**: Complete audit trail with correlation IDs
+
+## Sample Projects
+
+For hands-on examples of these features, see the sample projects:
+
+- **[03-tool-filtering](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/03-tool-filtering)** - Allowlist, denylist, and regex filtering examples
+- **[06-hooks](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/06-hooks)** - Logging, rate limiting, audit, and content filtering hooks
+- **[10-enterprise-complete](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/10-enterprise-complete)** - Full enterprise configuration with all security features

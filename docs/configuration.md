@@ -371,6 +371,148 @@ Connect to an SSE-only MCP server:
 
 > **Note**: Use `"sse"` for servers that only support Server-Sent Events. Use `"http"` for servers that support the newer Streamable HTTP transport (it auto-detects and falls back to SSE).
 
+### Backend Authentication
+
+Configure Azure AD authentication for connecting to backend MCP servers that require OAuth tokens:
+
+```json
+{
+  "mcp": {
+    "azure-api": {
+      "type": "http",
+      "title": "Azure API Server",
+      "url": "https://my-mcp-server.azurewebsites.net/mcp",
+      "auth": {
+        "type": "AzureAdClientCredentials",
+        "azureAd": {
+          "tenantId": "your-tenant-id",
+          "clientId": "your-client-id",
+          "clientSecret": "env:AZURE_CLIENT_SECRET",
+          "scopes": ["api://backend-api/.default"]
+        }
+      }
+    }
+  }
+}
+```
+
+**Authentication Types:**
+
+| Type | Description |
+|------|-------------|
+| `None` | No authentication (default) |
+| `AzureAdClientCredentials` | App-to-app authentication using client credentials flow |
+| `AzureAdOnBehalfOf` | User delegation using on-behalf-of flow |
+| `AzureAdManagedIdentity` | Azure managed identity (system or user-assigned) |
+
+**Azure AD Configuration Options:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `azureAd.instance` | string | `"https://login.microsoftonline.com/"` | Azure AD instance URL |
+| `azureAd.tenantId` | string | - | Azure AD tenant ID |
+| `azureAd.clientId` | string | - | Application (client) ID (required for client credentials) |
+| `azureAd.clientSecret` | string | - | Client secret (supports `env:VAR`) |
+| `azureAd.certificatePath` | string | - | Path to certificate file (alternative to secret) |
+| `azureAd.certificateThumbprint` | string | - | Certificate thumbprint in store (alternative to secret) |
+| `azureAd.scopes` | string[] | `[".default"]` | OAuth scopes to request |
+| `azureAd.managedIdentityClientId` | string | - | Client ID for user-assigned managed identity |
+
+**Client Credentials Example:**
+
+```json
+{
+  "auth": {
+    "type": "AzureAdClientCredentials",
+    "azureAd": {
+      "tenantId": "contoso.onmicrosoft.com",
+      "clientId": "00000000-0000-0000-0000-000000000000",
+      "clientSecret": "env:BACKEND_CLIENT_SECRET",
+      "scopes": ["api://backend-server/.default"]
+    }
+  }
+}
+```
+
+**On-Behalf-Of Flow Example:**
+
+The OBO flow allows the proxy to call backend servers on behalf of the authenticated user:
+
+```json
+{
+  "auth": {
+    "type": "AzureAdOnBehalfOf",
+    "azureAd": {
+      "tenantId": "contoso.onmicrosoft.com",
+      "clientId": "00000000-0000-0000-0000-000000000000",
+      "clientSecret": "env:BACKEND_CLIENT_SECRET",
+      "scopes": ["api://backend-server/access_as_user"]
+    }
+  }
+}
+```
+
+> **Note**: On-Behalf-Of requires that the inbound request to the proxy is authenticated with Azure AD.
+
+**Managed Identity Example:**
+
+```json
+{
+  "auth": {
+    "type": "AzureAdManagedIdentity",
+    "azureAd": {
+      "scopes": ["api://backend-server/.default"]
+    }
+  }
+}
+```
+
+For user-assigned managed identity:
+
+```json
+{
+  "auth": {
+    "type": "AzureAdManagedIdentity",
+    "azureAd": {
+      "managedIdentityClientId": "00000000-0000-0000-0000-000000000000",
+      "scopes": ["api://backend-server/.default"]
+    }
+  }
+}
+```
+
+**Certificate-Based Authentication:**
+
+```json
+{
+  "auth": {
+    "type": "AzureAdClientCredentials",
+    "azureAd": {
+      "tenantId": "contoso.onmicrosoft.com",
+      "clientId": "00000000-0000-0000-0000-000000000000",
+      "certificatePath": "/path/to/certificate.pfx",
+      "scopes": ["api://backend-server/.default"]
+    }
+  }
+}
+```
+
+Or load from certificate store:
+
+```json
+{
+  "auth": {
+    "type": "AzureAdClientCredentials",
+    "azureAd": {
+      "tenantId": "contoso.onmicrosoft.com",
+      "clientId": "00000000-0000-0000-0000-000000000000",
+      "certificateThumbprint": "ABC123DEF456...",
+      "scopes": ["api://backend-server/.default"]
+    }
+  }
+}
+```
+
 ### Tool Configuration
 
 Configure filtering and prefixing for tools:
@@ -528,7 +670,7 @@ MCP Proxy supports two forms of environment variable substitution:
 
 The configuration file path can be set via:
 
-1. Command-line argument: `mcpproxy stdio ./mcp-proxy.json`
+1. Command-line argument: `mcpproxy -t stdio -c ./mcp-proxy.json`
 2. Environment variable: `MCP_PROXY_CONFIG_PATH`
 
 ## Complete Example

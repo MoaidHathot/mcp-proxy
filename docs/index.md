@@ -77,7 +77,7 @@ Create a configuration file `mcp-proxy.json`:
 Run the proxy:
 
 ```bash
-mcpproxy stdio ./mcp-proxy.json
+mcpproxy -t stdio -c ./mcp-proxy.json
 ```
 
 That's it! Your MCP client can now connect to the proxy and access tools from both servers.
@@ -120,6 +120,7 @@ That's it! Your MCP client can now connect to the proxy and access tools from bo
 - [Advanced]({{ '/advanced/' | relative_url }}) - Telemetry, caching, and notifications
 - [Client Integrations]({{ '/integrations/' | relative_url }}) - Setup guides for popular MCP clients
 - [API Reference]({{ '/api/' | relative_url }}) - Programmatic usage
+- [Sample Projects](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples) - 10 comprehensive examples
 
 ## License
 

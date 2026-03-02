@@ -23,6 +23,13 @@ public sealed class ProxyMetrics : IDisposable
     private readonly Histogram<double> _promptGetDuration;
     private readonly UpDownCounter<int> _activeBackendConnections;
 
+    // Hook-related metrics
+    private readonly Counter<long> _rateLimitExceeded;
+    private readonly Counter<long> _authorizationDenied;
+    private readonly Counter<long> _authorizationGranted;
+    private readonly Counter<long> _retryAttempts;
+    private readonly Counter<long> _contentFilterTriggered;
+
     /// <summary>
     /// Initializes a new instance of <see cref="ProxyMetrics"/>.
     /// </summary>
@@ -75,6 +82,32 @@ public sealed class ProxyMetrics : IDisposable
             "mcpproxy.backend_connections.active",
             unit: "{connections}",
             description: "Number of active backend connections");
+
+        // Hook-related metrics
+        _rateLimitExceeded = _meter.CreateCounter<long>(
+            "mcpproxy.hooks.rate_limit.exceeded",
+            unit: "{events}",
+            description: "Number of rate limit exceeded events");
+
+        _authorizationDenied = _meter.CreateCounter<long>(
+            "mcpproxy.hooks.authorization.denied",
+            unit: "{events}",
+            description: "Number of authorization denied events");
+
+        _authorizationGranted = _meter.CreateCounter<long>(
+            "mcpproxy.hooks.authorization.granted",
+            unit: "{events}",
+            description: "Number of authorization granted events");
+
+        _retryAttempts = _meter.CreateCounter<long>(
+            "mcpproxy.hooks.retry.attempts",
+            unit: "{attempts}",
+            description: "Number of retry attempts");
+
+        _contentFilterTriggered = _meter.CreateCounter<long>(
+            "mcpproxy.hooks.content_filter.triggered",
+            unit: "{events}",
+            description: "Number of content filter triggered events");
     }
 
     /// <summary>
@@ -196,6 +229,76 @@ public sealed class ProxyMetrics : IDisposable
     {
         _activeBackendConnections.Add(-1,
             new KeyValuePair<string, object?>("server", serverName));
+    }
+
+    /// <summary>
+    /// Records a rate limit exceeded event.
+    /// </summary>
+    /// <param name="serverName">The backend server name.</param>
+    /// <param name="toolName">The tool name.</param>
+    /// <param name="keyType">The rate limit key type.</param>
+    public void RecordRateLimitExceeded(string serverName, string toolName, string keyType)
+    {
+        _rateLimitExceeded.Add(1,
+            new KeyValuePair<string, object?>("server", serverName),
+            new KeyValuePair<string, object?>("tool", toolName),
+            new KeyValuePair<string, object?>("key_type", keyType));
+    }
+
+    /// <summary>
+    /// Records an authorization denied event.
+    /// </summary>
+    /// <param name="serverName">The backend server name.</param>
+    /// <param name="toolName">The tool name.</param>
+    /// <param name="reason">The denial reason.</param>
+    public void RecordAuthorizationDenied(string serverName, string toolName, string reason)
+    {
+        _authorizationDenied.Add(1,
+            new KeyValuePair<string, object?>("server", serverName),
+            new KeyValuePair<string, object?>("tool", toolName),
+            new KeyValuePair<string, object?>("reason", reason));
+    }
+
+    /// <summary>
+    /// Records an authorization granted event.
+    /// </summary>
+    /// <param name="serverName">The backend server name.</param>
+    /// <param name="toolName">The tool name.</param>
+    public void RecordAuthorizationGranted(string serverName, string toolName)
+    {
+        _authorizationGranted.Add(1,
+            new KeyValuePair<string, object?>("server", serverName),
+            new KeyValuePair<string, object?>("tool", toolName));
+    }
+
+    /// <summary>
+    /// Records a retry attempt.
+    /// </summary>
+    /// <param name="serverName">The backend server name.</param>
+    /// <param name="toolName">The tool name.</param>
+    /// <param name="attempt">The attempt number.</param>
+    public void RecordRetryAttempt(string serverName, string toolName, int attempt)
+    {
+        _retryAttempts.Add(1,
+            new KeyValuePair<string, object?>("server", serverName),
+            new KeyValuePair<string, object?>("tool", toolName),
+            new KeyValuePair<string, object?>("attempt", attempt));
+    }
+
+    /// <summary>
+    /// Records a content filter triggered event.
+    /// </summary>
+    /// <param name="serverName">The backend server name.</param>
+    /// <param name="toolName">The tool name.</param>
+    /// <param name="patternName">The pattern name that was triggered.</param>
+    /// <param name="mode">The filter mode (redact, block, warn).</param>
+    public void RecordContentFilterTriggered(string serverName, string toolName, string patternName, string mode)
+    {
+        _contentFilterTriggered.Add(1,
+            new KeyValuePair<string, object?>("server", serverName),
+            new KeyValuePair<string, object?>("tool", toolName),
+            new KeyValuePair<string, object?>("pattern", patternName),
+            new KeyValuePair<string, object?>("mode", mode));
     }
 
     /// <inheritdoc />

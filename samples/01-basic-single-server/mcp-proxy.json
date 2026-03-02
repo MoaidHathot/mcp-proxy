@@ -1,0 +1,19 @@
+{
+  "$schema": "../../mcp-proxy.schema.json",
+  "proxy": {
+    "serverInfo": {
+      "name": "Basic Single Server Example",
+      "version": "1.0.0"
+    }
+  },
+  "mcp": {
+    "filesystem": {
+      "type": "stdio",
+      "title": "Filesystem Server",
+      "description": "Provides file system access tools",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "."],
+      "enabled": true
+    }
+  }
+}

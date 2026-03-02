@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 
 #pragma warning disable CA2007 // Consider calling ConfigureAwait on awaited task (test code)
+#pragma warning disable CA2213 // Disposable fields should be disposed (mocked fields don't need disposal)
 
 namespace McpProxy.Tests.Unit.Proxy;
 
@@ -11,6 +12,7 @@ public class ResourceSubscriptionTests : IAsyncDisposable
 {
     private readonly ILogger<McpProxyServer> _proxyLogger;
     private readonly ILogger<McpClientManager> _clientManagerLogger;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<ResourceSubscriptionManager> _subscriptionManagerLogger;
     private readonly McpClientManager _clientManager;
     private readonly ProxyConfiguration _configuration;
@@ -20,6 +22,7 @@ public class ResourceSubscriptionTests : IAsyncDisposable
     {
         _proxyLogger = Substitute.For<ILogger<McpProxyServer>>();
         _clientManagerLogger = Substitute.For<ILogger<McpClientManager>>();
+        _loggerFactory = Substitute.For<ILoggerFactory>();
         _subscriptionManagerLogger = Substitute.For<ILogger<ResourceSubscriptionManager>>();
 
         _configuration = new ProxyConfiguration
@@ -39,7 +42,7 @@ public class ResourceSubscriptionTests : IAsyncDisposable
             }
         };
 
-        _clientManager = new McpClientManager(_clientManagerLogger);
+        _clientManager = new McpClientManager(_clientManagerLogger, _loggerFactory);
         _proxyServer = new McpProxyServer(_proxyLogger, _clientManager, _configuration);
     }
 
@@ -230,6 +233,7 @@ public class ResourceSubscriptionManagerTests : IAsyncDisposable
 {
     private readonly ILogger<ResourceSubscriptionManager> _logger;
     private readonly ILogger<McpClientManager> _clientManagerLogger;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly McpClientManager _clientManager;
     private readonly ResourceSubscriptionManager _subscriptionManager;
 
@@ -237,7 +241,8 @@ public class ResourceSubscriptionManagerTests : IAsyncDisposable
     {
         _logger = Substitute.For<ILogger<ResourceSubscriptionManager>>();
         _clientManagerLogger = Substitute.For<ILogger<McpClientManager>>();
-        _clientManager = new McpClientManager(_clientManagerLogger);
+        _loggerFactory = Substitute.For<ILoggerFactory>();
+        _clientManager = new McpClientManager(_clientManagerLogger, _loggerFactory);
         _subscriptionManager = new ResourceSubscriptionManager(_logger, _clientManager);
     }
 

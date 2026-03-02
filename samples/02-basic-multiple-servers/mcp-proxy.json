@@ -1,0 +1,48 @@
+{
+  "$schema": "../../mcp-proxy.schema.json",
+  "proxy": {
+    "serverInfo": {
+      "name": "Multi-Server Aggregation Example",
+      "version": "1.0.0",
+      "instructions": "This proxy provides access to filesystem operations, time utilities, and memory storage."
+    }
+  },
+  "mcp": {
+    "filesystem": {
+      "type": "stdio",
+      "title": "Filesystem Server",
+      "description": "Provides file system access tools",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "."],
+      "enabled": true,
+      "tools": {
+        "prefix": "fs",
+        "prefixSeparator": "_"
+      }
+    },
+    "time": {
+      "type": "stdio",
+      "title": "Time Server",
+      "description": "Provides time and timezone utilities",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-time"],
+      "enabled": true,
+      "tools": {
+        "prefix": "time",
+        "prefixSeparator": "_"
+      }
+    },
+    "memory": {
+      "type": "stdio",
+      "title": "Memory Server",
+      "description": "Provides persistent memory storage using a knowledge graph",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-memory"],
+      "enabled": true,
+      "tools": {
+        "prefix": "mem",
+        "prefixSeparator": "_"
+      }
+    }
+  }
+}

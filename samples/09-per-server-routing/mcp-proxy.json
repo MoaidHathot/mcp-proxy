@@ -1,0 +1,52 @@
+{
+  "$schema": "../../mcp-proxy.schema.json",
+  "proxy": {
+    "serverInfo": {
+      "name": "Per-Server Routing Example",
+      "version": "1.0.0",
+      "instructions": "This proxy exposes each backend server on its own HTTP route."
+    },
+    "routing": {
+      "mode": "perServer",
+      "basePath": "/api"
+    },
+    "authentication": {
+      "enabled": true,
+      "type": "apiKey",
+      "apiKey": {
+        "header": "X-API-Key",
+        "value": "env:MCP_PROXY_API_KEY"
+      }
+    },
+    "logging": {
+      "logRequests": true,
+      "logResponses": false
+    }
+  },
+  "mcp": {
+    "filesystem": {
+      "type": "stdio",
+      "title": "Filesystem Server",
+      "description": "File system operations",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "."],
+      "enabled": true
+    },
+    "time": {
+      "type": "stdio",
+      "title": "Time Server",
+      "description": "Time and timezone utilities",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-time"],
+      "enabled": true
+    },
+    "memory": {
+      "type": "stdio",
+      "title": "Memory Server",
+      "description": "Knowledge graph storage",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-memory"],
+      "enabled": true
+    }
+  }
+}

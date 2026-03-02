@@ -29,9 +29,16 @@ public sealed class HookContext<TRequest>
     public IDictionary<string, object?> Items { get; } = new Dictionary<string, object?>();
 
     /// <summary>
-    /// Gets the cancellation token for the operation.
+    /// Gets or sets the cancellation token for the operation.
+    /// Can be modified by timeout hooks to enforce time limits.
     /// </summary>
-    public CancellationToken CancellationToken { get; init; }
+    public CancellationToken CancellationToken { get; set; }
+
+    /// <summary>
+    /// Gets the authentication result from the current request, if available.
+    /// Contains principal identity, roles, scopes, and other claims from authentication.
+    /// </summary>
+    public AuthenticationResult? AuthenticationResult { get; init; }
 }
 
 /// <summary>

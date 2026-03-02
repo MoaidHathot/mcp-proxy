@@ -27,8 +27,8 @@ dotnet tool install -g McpProxy
 After installation, you can run the proxy using:
 
 ```bash
-mcpproxy stdio ./mcp-proxy.json
-mcpproxy sse ./mcp-proxy.json
+mcpproxy -t stdio -c ./mcp-proxy.json
+mcpproxy -t sse -c ./mcp-proxy.json
 ```
 
 ### Run with dnx (No Installation Required)
@@ -36,8 +36,8 @@ mcpproxy sse ./mcp-proxy.json
 You can run McpProxy directly without installing it using `dnx`:
 
 ```bash
-dnx McpProxy -- stdio ./mcp-proxy.json
-dnx McpProxy -- sse ./mcp-proxy.json
+dnx McpProxy -- -t stdio -c ./mcp-proxy.json
+dnx McpProxy -- -t sse -c ./mcp-proxy.json
 ```
 
 ### Build from Source
@@ -46,7 +46,7 @@ dnx McpProxy -- sse ./mcp-proxy.json
 git clone https://github.com/MoaidHathot/mcp-proxy.git
 cd mcp-proxy
 dotnet build src/McpProxy
-dotnet run --project src/McpProxy -- stdio ./mcp-proxy.json
+dotnet run --project src/McpProxy -- -t stdio -c ./mcp-proxy.json
 ```
 
 ## Quick Start
@@ -74,7 +74,7 @@ dotnet run --project src/McpProxy -- stdio ./mcp-proxy.json
 2. Run the proxy:
 
 ```bash
-mcpproxy stdio ./mcp-proxy.json
+mcpproxy -t stdio -c ./mcp-proxy.json
 ```
 
 3. Connect your MCP client (Claude Desktop, OpenCode, GitHub Copilot, etc.) to the proxy.
@@ -82,36 +82,38 @@ mcpproxy stdio ./mcp-proxy.json
 ## Usage
 
 ```bash
-mcpproxy <transport> [config-path]
+mcpproxy [options]
 ```
 
-### Arguments
+### Options
 
-| Argument | Description |
-|----------|-------------|
-| `transport` | Server transport type: `stdio` or `sse` |
-| `config-path` | Path to configuration file (optional) |
+| Option | Alias | Description | Default |
+|--------|-------|-------------|---------|
+| `--transport` | `-t` | Server transport type: `stdio`, `http`, or `sse` | `stdio` |
+| `--config` | `-c` | Path to mcp-proxy.json configuration file | Auto-detect |
+| `--port` | `-p` | Port for HTTP/SSE server | `5000` |
+| `--verbose` | `-v` | Enable verbose logging | `false` |
 
 ### Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `MCP_PROXY_CONFIG_PATH` | Path to the configuration file (used if `config-path` argument is not provided) |
+| `MCP_PROXY_CONFIG_PATH` | Path to the configuration file (used if `--config` is not provided) |
 
 ### Examples
 
 ```bash
 # Run with STDIO transport (for use with Claude Desktop, etc.)
-mcpproxy stdio
+mcpproxy -t stdio
 
 # Run with SSE transport (for HTTP clients)
-mcpproxy sse
+mcpproxy -t sse
 
 # Run with STDIO and specific config file
-mcpproxy stdio ./mcp-proxy.json
+mcpproxy -t stdio -c ./mcp-proxy.json
 
-# Run with SSE and specific config file
-mcpproxy sse /path/to/config.json
+# Run with SSE, custom port, and verbose logging
+mcpproxy -t sse -c /path/to/config.json -p 8080 -v
 ```
 
 ## Configuration Reference
@@ -419,7 +421,7 @@ Add to your OpenCode configuration file (`opencode.json`):
   "mcp": {
     "mcp-proxy": {
       "type": "local",
-      "command": ["mcpproxy", "stdio", "/path/to/mcp-proxy.json"],
+      "command": ["mcpproxy", "-t", "stdio", "-c", "/path/to/mcp-proxy.json"],
       "enabled": true
     }
   }
@@ -433,7 +435,7 @@ Add to your OpenCode configuration file (`opencode.json`):
   "mcp": {
     "mcp-proxy": {
       "type": "local",
-      "command": ["dnx", "McpProxy", "--", "stdio", "/path/to/mcp-proxy.json"],
+      "command": ["dnx", "McpProxy", "--", "-t", "stdio", "-c", "/path/to/mcp-proxy.json"],
       "enabled": true
     }
   }
@@ -451,7 +453,7 @@ Add to your VS Code settings (`settings.json`) or workspace settings:
   "github.copilot.chat.mcp.servers": {
     "mcp-proxy": {
       "command": "mcpproxy",
-      "args": ["stdio", "/path/to/mcp-proxy.json"]
+      "args": ["-t", "stdio", "-c", "/path/to/mcp-proxy.json"]
     }
   }
 }
@@ -464,7 +466,7 @@ Add to your VS Code settings (`settings.json`) or workspace settings:
   "github.copilot.chat.mcp.servers": {
     "mcp-proxy": {
       "command": "dnx",
-      "args": ["McpProxy", "--", "stdio", "/path/to/mcp-proxy.json"]
+      "args": ["McpProxy", "--", "-t", "stdio", "-c", "/path/to/mcp-proxy.json"]
     }
   }
 }
@@ -477,7 +479,7 @@ Alternatively, create a `.vscode/mcp.json` file in your project:
   "servers": {
     "mcp-proxy": {
       "command": "mcpproxy",
-      "args": ["stdio", "/path/to/mcp-proxy.json"]
+      "args": ["-t", "stdio", "-c", "/path/to/mcp-proxy.json"]
     }
   }
 }
@@ -494,7 +496,7 @@ Add to your Claude Desktop configuration (`claude_desktop_config.json`):
   "mcpServers": {
     "mcp-proxy": {
       "command": "mcpproxy",
-      "args": ["stdio", "/path/to/mcp-proxy.json"]
+      "args": ["-t", "stdio", "-c", "/path/to/mcp-proxy.json"]
     }
   }
 }
@@ -507,7 +509,7 @@ Add to your Claude Desktop configuration (`claude_desktop_config.json`):
   "mcpServers": {
     "mcp-proxy": {
       "command": "dnx",
-      "args": ["McpProxy", "--", "stdio", "/path/to/mcp-proxy.json"]
+      "args": ["McpProxy", "--", "-t", "stdio", "-c", "/path/to/mcp-proxy.json"]
     }
   }
 }
@@ -518,19 +520,19 @@ Add to your Claude Desktop configuration (`claude_desktop_config.json`):
 Start the proxy in SSE mode:
 
 ```bash
-mcpproxy sse ./mcp-proxy.json
+mcpproxy -t sse -c ./mcp-proxy.json
 ```
 
-The server will start on the default ASP.NET Core port (typically `http://localhost:5000`). You can configure the port using standard ASP.NET Core configuration:
+The server will start on the default ASP.NET Core port (typically `http://localhost:5000`). You can configure the port using the `--port` option:
 
 ```bash
-mcpproxy sse ./mcp-proxy.json --urls "http://localhost:8080"
+mcpproxy -t sse -c ./mcp-proxy.json -p 8080
 ```
 
 Or via environment variable:
 
 ```bash
-ASPNETCORE_URLS=http://localhost:8080 mcpproxy sse ./mcp-proxy.json
+ASPNETCORE_URLS=http://localhost:8080 mcpproxy -t sse -c ./mcp-proxy.json
 ```
 
 ## Complete Configuration Example

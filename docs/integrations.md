@@ -45,7 +45,7 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "mcp-proxy": {
       "command": "mcpproxy",
-      "args": ["stdio", "/path/to/mcp-proxy.json"]
+      "args": ["-t", "stdio", "-c", "/path/to/mcp-proxy.json"]
     }
   }
 }
@@ -60,7 +60,7 @@ If you don't want to install globally:
   "mcpServers": {
     "mcp-proxy": {
       "command": "dnx",
-      "args": ["McpProxy", "--", "stdio", "/path/to/mcp-proxy.json"]
+      "args": ["McpProxy", "--", "-t", "stdio", "-c", "/path/to/mcp-proxy.json"]
     }
   }
 }
@@ -75,7 +75,7 @@ Pass environment variables to the proxy:
   "mcpServers": {
     "mcp-proxy": {
       "command": "mcpproxy",
-      "args": ["stdio", "/path/to/mcp-proxy.json"],
+      "args": ["-t", "stdio", "-c", "/path/to/mcp-proxy.json"],
       "env": {
         "GITHUB_TOKEN": "your-token-here",
         "API_KEY": "your-api-key"
@@ -95,7 +95,7 @@ Pass environment variables to the proxy:
 **Tools not appearing:**
 1. Verify your `mcp-proxy.json` configuration is valid JSON
 2. Check that backend servers are configured correctly
-3. Enable verbose logging: `["stdio", "--verbose", "/path/to/config.json"]`
+3. Enable verbose logging: `["-t", "stdio", "-c", "/path/to/config.json", "-v"]`
 
 ## OpenCode
 
@@ -112,7 +112,7 @@ OpenCode reads MCP configuration from `opencode.json` or your project's configur
   "mcp": {
     "mcp-proxy": {
       "type": "local",
-      "command": ["mcpproxy", "stdio", "/path/to/mcp-proxy.json"],
+      "command": ["mcpproxy", "-t", "stdio", "-c", "/path/to/mcp-proxy.json"],
       "enabled": true
     }
   }
@@ -126,7 +126,7 @@ OpenCode reads MCP configuration from `opencode.json` or your project's configur
   "mcp": {
     "mcp-proxy": {
       "type": "local",
-      "command": ["dnx", "McpProxy", "--", "stdio", "/path/to/mcp-proxy.json"],
+      "command": ["dnx", "McpProxy", "--", "-t", "stdio", "-c", "/path/to/mcp-proxy.json"],
       "enabled": true
     }
   }
@@ -140,7 +140,7 @@ OpenCode reads MCP configuration from `opencode.json` or your project's configur
   "mcp": {
     "mcp-proxy": {
       "type": "local",
-      "command": ["mcpproxy", "stdio", "--verbose", "/path/to/mcp-proxy.json"],
+      "command": ["mcpproxy", "-t", "stdio", "-c", "/path/to/mcp-proxy.json", "-v"],
       "enabled": true
     }
   }
@@ -156,7 +156,7 @@ You can use relative paths for project-specific configs:
   "mcp": {
     "mcp-proxy": {
       "type": "local",
-      "command": ["mcpproxy", "stdio", "./.mcp-proxy.json"],
+      "command": ["mcpproxy", "-t", "stdio", "-c", "./.mcp-proxy.json"],
       "enabled": true
     }
   }
@@ -176,7 +176,7 @@ Add to your VS Code `settings.json`:
   "github.copilot.chat.mcp.servers": {
     "mcp-proxy": {
       "command": "mcpproxy",
-      "args": ["stdio", "/path/to/mcp-proxy.json"]
+      "args": ["-t", "stdio", "-c", "/path/to/mcp-proxy.json"]
     }
   }
 }
@@ -191,7 +191,7 @@ Create `.vscode/mcp.json` in your project:
   "servers": {
     "mcp-proxy": {
       "command": "mcpproxy",
-      "args": ["stdio", "${workspaceFolder}/.mcp-proxy.json"]
+      "args": ["-t", "stdio", "-c", "${workspaceFolder}/.mcp-proxy.json"]
     }
   }
 }
@@ -204,7 +204,7 @@ Create `.vscode/mcp.json` in your project:
   "servers": {
     "mcp-proxy": {
       "command": "dnx",
-      "args": ["McpProxy", "--", "stdio", "/path/to/mcp-proxy.json"]
+      "args": ["McpProxy", "--", "-t", "stdio", "-c", "/path/to/mcp-proxy.json"]
     }
   }
 }
@@ -219,7 +219,7 @@ For different projects, use workspace-relative paths:
   "servers": {
     "mcp-proxy": {
       "command": "mcpproxy",
-      "args": ["stdio", "${workspaceFolder}/mcp-proxy.json"]
+      "args": ["-t", "stdio", "-c", "${workspaceFolder}/mcp-proxy.json"]
     }
   }
 }
@@ -233,13 +233,13 @@ For custom integrations or HTTP-based clients, run MCP Proxy in SSE mode.
 
 ```bash
 # Default port (5000)
-mcpproxy sse ./mcp-proxy.json
+mcpproxy -t sse -c ./mcp-proxy.json
 
 # Custom port
-mcpproxy sse ./mcp-proxy.json --urls "http://localhost:8080"
+mcpproxy -t sse -c ./mcp-proxy.json -p 8080
 
 # Or via environment variable
-ASPNETCORE_URLS=http://localhost:8080 mcpproxy sse ./mcp-proxy.json
+ASPNETCORE_URLS=http://localhost:8080 mcpproxy -t sse -c ./mcp-proxy.json
 ```
 
 ### Endpoints
@@ -340,7 +340,7 @@ COPY mcp-proxy.json /app/
 WORKDIR /app
 
 EXPOSE 5000
-CMD ["mcpproxy", "sse", "/app/mcp-proxy.json"]
+CMD ["mcpproxy", "-t", "sse", "-c", "/app/mcp-proxy.json"]
 ```
 
 ```bash

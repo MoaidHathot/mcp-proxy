@@ -7,6 +7,7 @@ using ModelContextProtocol.Protocol;
 
 #pragma warning disable CA2007 // Consider calling ConfigureAwait on awaited task (test code)
 #pragma warning disable CA1001 // Type owns disposable field(s) but is not disposable (test class, disposed by test framework)
+#pragma warning disable CA2213 // Disposable fields should be disposed (mocked fields don't need disposal)
 
 namespace McpProxy.Tests.Unit.Proxy;
 
@@ -14,6 +15,7 @@ public class SingleServerProxyTests : IAsyncDisposable
 {
     private readonly ILogger<SingleServerProxy> _logger;
     private readonly ILogger<McpClientManager> _clientManagerLogger;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<HookPipeline> _hookPipelineLogger;
     private readonly McpClientManager _clientManager;
     private readonly string _serverName = "test-server";
@@ -22,8 +24,9 @@ public class SingleServerProxyTests : IAsyncDisposable
     {
         _logger = Substitute.For<ILogger<SingleServerProxy>>();
         _clientManagerLogger = Substitute.For<ILogger<McpClientManager>>();
+        _loggerFactory = Substitute.For<ILoggerFactory>();
         _hookPipelineLogger = Substitute.For<ILogger<HookPipeline>>();
-        _clientManager = new McpClientManager(_clientManagerLogger);
+        _clientManager = new McpClientManager(_clientManagerLogger, _loggerFactory);
     }
 
     public async ValueTask DisposeAsync()

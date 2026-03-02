@@ -305,9 +305,10 @@ void RegisterCoreServices(IServiceCollection services, ProxyConfiguration config
     services.AddSingleton<McpClientManager>(sp =>
     {
         var logger = sp.GetRequiredService<ILogger<McpClientManager>>();
+        var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
         var proxyClientHandlers = sp.GetRequiredService<ProxyClientHandlers>();
         var notificationForwarder = sp.GetRequiredService<NotificationForwarder>();
-        return new McpClientManager(logger, proxyClientHandlers, notificationForwarder);
+        return new McpClientManager(logger, loggerFactory, proxyClientHandlers, notificationForwarder);
     });
     services.AddSingleton<HookFactory>();
     services.AddSingleton<McpProxyServer>();

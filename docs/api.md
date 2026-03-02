@@ -315,39 +315,35 @@ IPromptFilter promptFilter = new PromptDenyListFilter(
 ### Using the Hook Pipeline
 
 ```csharp
-var pipeline = new HookPipeline();
+var pipeline = new HookPipeline(loggerFactory.CreateLogger<HookPipeline>());
 
 // Add built-in hooks
-pipeline.AddHook(new LoggingHook(
+pipeline.AddPreInvokeHook(new LoggingHook(
     logger,
-    level: LogLevel.Debug,
-    logArguments: true,
-    logResult: false
+    new LoggingConfiguration
+    {
+        LogLevel = LogLevel.Debug,
+        LogArguments = true,
+        LogResult = false
+    }
 ));
 
-pipeline.AddHook(new OutputTransformHook(
-    redactPatterns: ["password", "secret"],
-    redactedValue: "[REDACTED]"
+pipeline.AddPostInvokeHook(new OutputTransformHook(
+    new OutputTransformConfiguration
+    {
+        RedactPatterns = ["password", "secret"],
+        RedactedValue = "[REDACTED]"
+    }
 ));
 
-// Execute pipeline
-var preResult = await pipeline.ExecutePreInvokeAsync(
-    context,
-    cancellationToken
-);
+// Execute pre-invoke hooks
+await pipeline.ExecutePreInvokeHooksAsync(context);
 
-if (preResult.ShouldContinue)
-{
-    // Call the tool
-    var toolResult = await client.CallToolAsync(...);
-    
-    // Execute post-invoke hooks
-    var postResult = await pipeline.ExecutePostInvokeAsync(
-        context,
-        toolResult,
-        cancellationToken
-    );
-}
+// Call the tool
+var toolResult = await client.CallToolAsync(...);
+
+// Execute post-invoke hooks
+var finalResult = await pipeline.ExecutePostInvokeHooksAsync(context, toolResult);
 ```
 
 ### Custom Hooks
@@ -394,14 +390,14 @@ public class AuditHook : IPostInvokeHook
 ### Hook Factory
 
 ```csharp
-var factory = new HookFactory(loggerFactory);
+var factory = new HookFactory(loggerFactory, memoryCache, metrics);
 
 // Register custom hook types
-factory.RegisterHookType("validation", (definition, lf) => new ValidationHook());
-factory.RegisterHookType("audit", (definition, lf) => new AuditHook(auditService));
+factory.RegisterHookType("validation", (definition, hookFactory) => new ValidationHook());
+factory.RegisterHookType("audit", (definition, hookFactory) => new CustomAuditHook(auditService));
 
 // Create hooks from configuration
-var pipeline = new HookPipeline();
+var pipeline = new HookPipeline(loggerFactory.CreateLogger<HookPipeline>());
 factory.ConfigurePipeline(hooksConfiguration, pipeline);
 ```
 

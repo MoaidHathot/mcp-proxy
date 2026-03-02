@@ -3,7 +3,9 @@ using McpProxy.Core.Caching;
 using McpProxy.Core.Configuration;
 using McpProxy.Core.Filtering;
 using McpProxy.Core.Hooks;
+using McpProxy.Core.Hooks.BuiltIn;
 using McpProxy.Core.Logging;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -97,6 +99,7 @@ public sealed class McpProxyServer
     private readonly McpClientManager _clientManager;
     private readonly ProxyConfiguration _configuration;
     private readonly IToolCache _toolCache;
+    private readonly IHttpContextAccessor? _httpContextAccessor;
     private readonly int _cacheTtlSeconds;
     private readonly Dictionary<string, HookPipeline> _hookPipelines = [];
     private readonly Dictionary<string, IToolFilter> _toolFilters = [];
@@ -116,7 +119,7 @@ public sealed class McpProxyServer
         ILogger<McpProxyServer> logger,
         McpClientManager clientManager,
         ProxyConfiguration configuration)
-        : this(logger, clientManager, configuration, null)
+        : this(logger, clientManager, configuration, null, null)
     {
     }
 
@@ -127,11 +130,13 @@ public sealed class McpProxyServer
         ILogger<McpProxyServer> logger,
         McpClientManager clientManager,
         ProxyConfiguration configuration,
-        IToolCache? toolCache)
+        IToolCache? toolCache,
+        IHttpContextAccessor? httpContextAccessor = null)
     {
         _logger = logger;
         _clientManager = clientManager;
         _configuration = configuration;
+        _httpContextAccessor = httpContextAccessor;
 
         var cacheConfig = configuration.Proxy.Caching.Tools;
         _cacheTtlSeconds = cacheConfig.TtlSeconds;
@@ -286,6 +291,9 @@ public sealed class McpProxyServer
 
         ProxyLogger.CallingTool(_logger, toolInfo.OriginalName, toolInfo.ServerName);
 
+        // Get authentication result from HttpContext if available
+        var authResult = GetAuthenticationResult();
+
         // Create hook context - create a new CallToolRequestParams with the original name
         var modifiedRequest = new CallToolRequestParams
         {
@@ -298,7 +306,8 @@ public sealed class McpProxyServer
             ServerName = toolInfo.ServerName,
             ToolName = toolInfo.OriginalName,
             Request = modifiedRequest,
-            CancellationToken = cancellationToken
+            CancellationToken = cancellationToken,
+            AuthenticationResult = authResult
         };
 
         // Execute pre-invoke hooks
@@ -308,7 +317,50 @@ public sealed class McpProxyServer
             await pipeline.ExecutePreInvokeHooksAsync(hookContext).ConfigureAwait(false);
         }
 
+        // Use the potentially modified cancellation token from hooks (e.g., TimeoutHook)
+        var effectiveCancellationToken = hookContext.CancellationToken;
+
+        CallToolResult result;
         try
+        {
+            // Call the tool with retry support
+            result = await ExecuteToolCallWithRetryAsync(
+                toolInfo,
+                hookContext,
+                pipeline,
+                effectiveCancellationToken).ConfigureAwait(false);
+
+            ProxyLogger.ToolCallCompleted(_logger, toolInfo.OriginalName);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            ProxyLogger.ToolCallFailed(_logger, toolInfo.OriginalName, ex);
+            throw;
+        }
+        finally
+        {
+            // Dispose the timeout CTS if it was created
+            if (hookContext.Items.TryGetValue(TimeoutHook.TimeoutCtsKey, out var ctsObj) && 
+                ctsObj is CancellationTokenSource cts)
+            {
+                cts.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Executes a tool call with retry support.
+    /// </summary>
+    private async Task<CallToolResult> ExecuteToolCallWithRetryAsync(
+        ToolInfo toolInfo,
+        HookContext<CallToolRequestParams> hookContext,
+        HookPipeline? pipeline,
+        CancellationToken cancellationToken)
+    {
+        const int MaxRetryIterations = 10; // Safety limit to prevent infinite loops
+        
+        for (var iteration = 0; iteration < MaxRetryIterations; iteration++)
         {
             // Call the tool
             var arguments = hookContext.Request.Arguments?.ToDictionary(p => p.Key, p => (object?)p.Value);
@@ -323,14 +375,39 @@ public sealed class McpProxyServer
                 result = await pipeline.ExecutePostInvokeHooksAsync(hookContext, result).ConfigureAwait(false);
             }
 
-            ProxyLogger.ToolCallCompleted(_logger, toolInfo.OriginalName);
-            return result;
+            // Check if retry was requested by the RetryHook
+            if (!hookContext.Items.TryGetValue(RetryHook.RetryRequestedKey, out var retryRequestedObj) ||
+                retryRequestedObj is not true)
+            {
+                // No retry requested, return the result
+                return result;
+            }
+
+            // Get retry delay
+            var delayMs = 0;
+            if (hookContext.Items.TryGetValue(RetryHook.RetryDelayMsKey, out var delayObj) && delayObj is int delay)
+            {
+                delayMs = delay;
+            }
+
+            // Clear the retry request flag before next iteration
+            hookContext.Items[RetryHook.RetryRequestedKey] = false;
+
+            // Wait before retrying
+            if (delayMs > 0)
+            {
+                await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+            }
+
+            // Continue to next iteration (retry)
         }
-        catch (Exception ex)
+
+        // Should not reach here normally, but return an error if we exhaust iterations
+        return new CallToolResult
         {
-            ProxyLogger.ToolCallFailed(_logger, toolInfo.OriginalName, ex);
-            throw;
-        }
+            Content = [new TextContentBlock { Text = "Maximum retry iterations exceeded" }],
+            IsError = true
+        };
     }
 
     /// <summary>
@@ -803,5 +880,21 @@ public sealed class McpProxyServer
         }
 
         return new EmptyResult();
+    }
+
+    private AuthenticationResult? GetAuthenticationResult()
+    {
+        if (_httpContextAccessor?.HttpContext is null)
+        {
+            return null;
+        }
+
+        if (_httpContextAccessor.HttpContext.Items.TryGetValue("McpProxy.Authentication.Result", out var result) 
+            && result is AuthenticationResult authResult)
+        {
+            return authResult;
+        }
+
+        return null;
     }
 }

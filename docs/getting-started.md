@@ -42,7 +42,7 @@ mcpproxy --help
 You can run MCP Proxy directly without installing it using `dnx`:
 
 ```bash
-dnx McpProxy -- stdio ./mcp-proxy.json
+dnx McpProxy -- -t stdio -c ./mcp-proxy.json
 ```
 
 This downloads and runs the tool on demand.
@@ -60,7 +60,7 @@ dotnet build src/McpProxy
 Run with:
 
 ```bash
-dotnet run --project src/McpProxy -- stdio ./mcp-proxy.json
+dotnet run --project src/McpProxy -- -t stdio -c ./mcp-proxy.json
 ```
 
 ## Your First Configuration
@@ -146,7 +146,7 @@ MCP Proxy supports environment variable substitution in two formats:
 Use STDIO mode when connecting to clients like Claude Desktop or OpenCode that spawn the proxy as a subprocess:
 
 ```bash
-mcpproxy stdio ./mcp-proxy.json
+mcpproxy -t stdio -c ./mcp-proxy.json
 ```
 
 ### SSE Mode (for HTTP clients)
@@ -154,19 +154,19 @@ mcpproxy stdio ./mcp-proxy.json
 Use SSE mode to run the proxy as an HTTP server:
 
 ```bash
-mcpproxy sse ./mcp-proxy.json
+mcpproxy -t sse -c ./mcp-proxy.json
 ```
 
 By default, the server runs on port 5000. You can change this:
 
 ```bash
-mcpproxy sse ./mcp-proxy.json --urls "http://localhost:8080"
+mcpproxy -t sse -c ./mcp-proxy.json -p 8080
 ```
 
 Or using an environment variable:
 
 ```bash
-ASPNETCORE_URLS=http://localhost:8080 mcpproxy sse ./mcp-proxy.json
+ASPNETCORE_URLS=http://localhost:8080 mcpproxy -t sse -c ./mcp-proxy.json
 ```
 
 ### Configuration Path
@@ -187,7 +187,7 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "mcp-proxy": {
       "command": "mcpproxy",
-      "args": ["stdio", "/path/to/mcp-proxy.json"]
+      "args": ["-t", "stdio", "-c", "/path/to/mcp-proxy.json"]
     }
   }
 }
@@ -202,7 +202,7 @@ Add to your OpenCode configuration:
   "mcp": {
     "mcp-proxy": {
       "type": "local",
-      "command": ["mcpproxy", "stdio", "/path/to/mcp-proxy.json"],
+      "command": ["mcpproxy", "-t", "stdio", "-c", "/path/to/mcp-proxy.json"],
       "enabled": true
     }
   }
@@ -218,7 +218,7 @@ Add to VS Code settings or `.vscode/mcp.json`:
   "servers": {
     "mcp-proxy": {
       "command": "mcpproxy",
-      "args": ["stdio", "/path/to/mcp-proxy.json"]
+      "args": ["-t", "stdio", "-c", "/path/to/mcp-proxy.json"]
     }
   }
 }
@@ -231,7 +231,7 @@ Once connected, your client should be able to see all tools from all configured 
 You can enable verbose logging to troubleshoot issues:
 
 ```bash
-mcpproxy stdio ./mcp-proxy.json --verbose
+mcpproxy -t stdio -c ./mcp-proxy.json -v
 ```
 
 ## Next Steps
@@ -239,3 +239,20 @@ mcpproxy stdio ./mcp-proxy.json --verbose
 - [Configuration Reference]({{ '/configuration/' | relative_url }}) - Learn about all configuration options
 - [Features]({{ '/features/' | relative_url }}) - Explore filtering, prefixing, and hooks
 - [Client Integrations]({{ '/integrations/' | relative_url }}) - Detailed setup for each client
+
+## Sample Projects
+
+The repository includes comprehensive sample projects demonstrating various features:
+
+| Sample | Description |
+|--------|-------------|
+| [01-basic-single-server](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/01-basic-single-server) | Basic setup with a single MCP server |
+| [02-basic-multiple-servers](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/02-basic-multiple-servers) | Aggregating multiple servers with prefixing |
+| [03-tool-filtering](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/03-tool-filtering) | Allowlist, denylist, and regex filtering |
+| [04-remote-servers](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/04-remote-servers) | HTTP/SSE backend connections |
+| [05-http-api-key-auth](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/05-http-api-key-auth) | API key authentication |
+| [06-hooks](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/06-hooks) | Logging, rate limiting, and content filtering |
+| [07-azure-ad-auth](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/07-azure-ad-auth) | Azure AD OAuth2/OIDC authentication |
+| [08-telemetry](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/08-telemetry) | OpenTelemetry metrics and tracing |
+| [09-per-server-routing](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/09-per-server-routing) | Per-server HTTP endpoints |
+| [10-enterprise-complete](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/10-enterprise-complete) | Complete enterprise setup |

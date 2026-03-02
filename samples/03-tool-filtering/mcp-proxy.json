@@ -1,0 +1,63 @@
+{
+  "$schema": "../../mcp-proxy.schema.json",
+  "proxy": {
+    "serverInfo": {
+      "name": "Tool Filtering Example",
+      "version": "1.0.0",
+      "instructions": "This proxy demonstrates tool filtering with allowlist and denylist modes."
+    }
+  },
+  "mcp": {
+    "filesystem-readonly": {
+      "type": "stdio",
+      "title": "Filesystem (Read-Only)",
+      "description": "File system server with only read operations exposed",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "."],
+      "enabled": true,
+      "tools": {
+        "prefix": "fs",
+        "prefixSeparator": "_",
+        "filter": {
+          "mode": "allowlist",
+          "patterns": ["read_*", "list_*", "search_*", "get_*"],
+          "caseInsensitive": true
+        }
+      }
+    },
+    "filesystem-writeonly": {
+      "type": "stdio",
+      "title": "Filesystem (Write-Only)",
+      "description": "File system server with only write operations exposed",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "."],
+      "enabled": true,
+      "tools": {
+        "prefix": "fsw",
+        "prefixSeparator": "_",
+        "filter": {
+          "mode": "allowlist",
+          "patterns": ["write_*", "create_*", "move_*", "delete_*"],
+          "caseInsensitive": true
+        }
+      }
+    },
+    "memory-filtered": {
+      "type": "stdio",
+      "title": "Memory (No Delete)",
+      "description": "Memory server with delete operations blocked",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-memory"],
+      "enabled": true,
+      "tools": {
+        "prefix": "mem",
+        "prefixSeparator": "_",
+        "filter": {
+          "mode": "denylist",
+          "patterns": ["delete_*", "remove_*", "clear_*"],
+          "caseInsensitive": true
+        }
+      }
+    }
+  }
+}

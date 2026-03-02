@@ -1,0 +1,67 @@
+{
+  "$schema": "../../mcp-proxy.schema.json",
+  "proxy": {
+    "serverInfo": {
+      "name": "Azure AD Authentication Example",
+      "version": "1.0.0",
+      "instructions": "This proxy is secured with Microsoft Entra ID (Azure AD) authentication."
+    },
+    "routing": {
+      "mode": "unified",
+      "basePath": "/mcp"
+    },
+    "authentication": {
+      "enabled": true,
+      "type": "azureAd",
+      "azureAd": {
+        "tenantId": "env:AZURE_TENANT_ID",
+        "clientId": "env:AZURE_CLIENT_ID",
+        "audience": "env:AZURE_CLIENT_ID",
+        "requiredScopes": ["MCP.Read", "MCP.Write"],
+        "requiredRoles": null
+      }
+    },
+    "logging": {
+      "logRequests": true,
+      "logResponses": false,
+      "sensitiveDataMask": true
+    }
+  },
+  "mcp": {
+    "filesystem": {
+      "type": "stdio",
+      "title": "Filesystem Server",
+      "description": "Provides file system access tools",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "."],
+      "enabled": true,
+      "hooks": {
+        "preInvoke": [
+          {
+            "type": "authorization",
+            "config": {
+              "requiredRoles": ["MCP.Admin"],
+              "allowedTools": ["write_file", "create_directory", "move_file", "delete_file"]
+            }
+          }
+        ]
+      }
+    },
+    "protected-backend": {
+      "type": "http",
+      "title": "Protected Backend",
+      "description": "Backend that requires Azure AD authentication",
+      "url": "https://api.example.com/mcp",
+      "enabled": false,
+      "auth": {
+        "type": "AzureAdOnBehalfOf",
+        "azureAd": {
+          "tenantId": "env:AZURE_TENANT_ID",
+          "clientId": "env:AZURE_CLIENT_ID",
+          "clientSecret": "env:AZURE_CLIENT_SECRET",
+          "scopes": ["api://backend-api/.default"]
+        }
+      }
+    }
+  }
+}

@@ -1,3 +1,4 @@
+using McpProxy.Core.Authentication;
 using McpProxy.Core.Configuration;
 using McpProxy.Core.Logging;
 using Microsoft.Extensions.Logging;
@@ -12,9 +13,11 @@ namespace McpProxy.Core.Proxy;
 public sealed class McpClientManager : IAsyncDisposable
 {
     private readonly ILogger<McpClientManager> _logger;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly ProxyClientHandlers? _proxyClientHandlers;
     private readonly NotificationForwarder? _notificationForwarder;
     private readonly Dictionary<string, McpClientInfo> _clients = [];
+    private readonly List<IDisposable> _disposables = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
     private ClientCapabilitySettings? _capabilitySettings;
     private bool _disposed;
@@ -23,14 +26,17 @@ public sealed class McpClientManager : IAsyncDisposable
     /// Initializes a new instance of <see cref="McpClientManager"/>.
     /// </summary>
     /// <param name="logger">The logger instance.</param>
+    /// <param name="loggerFactory">The logger factory for creating typed loggers.</param>
     /// <param name="proxyClientHandlers">Optional handlers for forwarding sampling/elicitation/roots requests.</param>
     /// <param name="notificationForwarder">Optional notification forwarder for forwarding notifications to clients.</param>
     public McpClientManager(
         ILogger<McpClientManager> logger,
+        ILoggerFactory loggerFactory,
         ProxyClientHandlers? proxyClientHandlers = null,
         NotificationForwarder? notificationForwarder = null)
     {
         _logger = logger;
+        _loggerFactory = loggerFactory;
         _proxyClientHandlers = proxyClientHandlers;
         _notificationForwarder = notificationForwarder;
     }
@@ -268,18 +274,52 @@ public sealed class McpClientManager : IAsyncDisposable
     /// <summary>
     /// Creates an HTTP/SSE transport for a backend server.
     /// </summary>
-    private static HttpClientTransport CreateHttpTransport(string name, ServerConfiguration config)
+    private HttpClientTransport CreateHttpTransport(string name, ServerConfiguration config)
     {
         var transportMode = config.Type == ServerTransportType.Sse
             ? HttpTransportMode.Sse
             : HttpTransportMode.AutoDetect;
 
-        return new HttpClientTransport(new HttpClientTransportOptions
+        var transportOptions = new HttpClientTransportOptions
         {
             Endpoint = new Uri(config.Url!),
             Name = name,
             TransportMode = transportMode
-        });
+        };
+
+        // Check if backend authentication is configured
+        if (config.Auth is { Type: not BackendAuthType.None })
+        {
+            var httpClient = CreateAuthenticatedHttpClient(config.Auth);
+            return new HttpClientTransport(transportOptions, httpClient, ownsHttpClient: true);
+        }
+
+        return new HttpClientTransport(transportOptions);
+    }
+
+    /// <summary>
+    /// Creates an HTTP client with Azure AD authentication.
+    /// </summary>
+    private HttpClient CreateAuthenticatedHttpClient(BackendAuthConfiguration authConfig)
+    {
+        var credentialProvider = new AzureAdCredentialProvider(
+            authConfig.AzureAd,
+            authConfig.Type,
+            _loggerFactory.CreateLogger<AzureAdCredentialProvider>());
+
+        // Track for disposal
+        _disposables.Add(credentialProvider);
+
+        // TODO: For on-behalf-of flow, we need to pass a user token accessor
+        // This requires integration with the request context
+        Func<string?>? userTokenAccessor = null;
+
+        var handler = new AzureAdAuthorizationHandler(
+            credentialProvider,
+            _loggerFactory.CreateLogger<AzureAdAuthorizationHandler>(),
+            userTokenAccessor);
+
+        return new HttpClient(handler);
     }
 
     /// <inheritdoc />
@@ -305,6 +345,20 @@ public sealed class McpClientManager : IAsyncDisposable
             }
         }
 
+        // Dispose credential providers and other disposables
+        foreach (var disposable in _disposables)
+        {
+            try
+            {
+                disposable.Dispose();
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+        }
+
+        _disposables.Clear();
         _clients.Clear();
         _lock.Dispose();
     }

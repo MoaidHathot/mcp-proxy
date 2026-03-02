@@ -280,4 +280,59 @@ public static partial class ProxyLogger
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Failed to unsubscribe from resource '{ResourceUri}' on server '{ServerName}'")]
     public static partial void ResourceUnsubscriptionFailed(ILogger logger, string resourceUri, string serverName, Exception exception);
+
+    // === Token Acquisition ===
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Acquiring token using {AuthType} for {Authority}")]
+    public static partial void AcquiringToken(ILogger logger, string authType, string authority);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Token acquired successfully using {AuthType}")]
+    public static partial void TokenAcquired(ILogger logger, string authType);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to acquire token using {AuthType}: {ErrorMessage}")]
+    public static partial void TokenAcquisitionFailed(ILogger logger, string authType, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to add authorization header for backend request")]
+    public static partial void BackendAuthorizationFailed(ILogger logger, Exception exception);
+
+    // === Hook Operations (Built-in Hooks) ===
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Rate limit exceeded for key '{Key}' (limit: {Limit} requests per {WindowSeconds}s)")]
+    public static partial void RateLimitExceeded(ILogger logger, string key, int limit, int windowSeconds);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Rate limit check passed for key '{Key}' ({CurrentCount}/{Limit})")]
+    public static partial void RateLimitChecked(ILogger logger, string key, int currentCount, int limit);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Authorization denied for tool '{ToolName}' (principal: {PrincipalId}): {Reason}")]
+    public static partial void AuthorizationDenied(ILogger logger, string toolName, string? principalId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Authorization granted for tool '{ToolName}' (principal: {PrincipalId})")]
+    public static partial void AuthorizationGranted(ILogger logger, string toolName, string? principalId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Timeout configured for tool '{ToolName}': {TimeoutSeconds}s")]
+    public static partial void TimeoutConfigured(ILogger logger, string toolName, int timeoutSeconds);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Retry attempt {Attempt}/{MaxRetries} for tool '{ToolName}' after {DelayMs}ms delay")]
+    public static partial void RetryAttempt(ILogger logger, int attempt, int maxRetries, string toolName, int delayMs);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Retry exhausted for tool '{ToolName}' after {MaxRetries} attempts")]
+    public static partial void RetryExhausted(ILogger logger, string toolName, int maxRetries);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Retry requested for tool '{ToolName}': error matches pattern '{Pattern}'")]
+    public static partial void RetryRequested(ILogger logger, string toolName, string pattern);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Audit: {Action} tool '{ToolName}' on server '{ServerName}' by principal '{PrincipalId}'")]
+    public static partial void AuditEntry(ILogger logger, string action, string toolName, string serverName, string? principalId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Audit: Tool '{ToolName}' completed in {DurationMs}ms with status '{Status}'")]
+    public static partial void AuditCompletion(ILogger logger, string toolName, long durationMs, string status);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Content filter triggered for tool '{ToolName}': pattern '{PatternName}' matched (mode: {Mode})")]
+    public static partial void ContentFilterTriggered(ILogger logger, string toolName, string patternName, string mode);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Content blocked for tool '{ToolName}': {Reason}")]
+    public static partial void ContentBlocked(ILogger logger, string toolName, string reason);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Metrics recorded for tool '{ToolName}': duration={DurationMs}ms, success={Success}")]
+    public static partial void MetricsRecorded(ILogger logger, string toolName, double durationMs, bool success);
 }

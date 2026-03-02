@@ -98,6 +98,113 @@ public sealed class ServerConfiguration
     /// Gets or sets whether this server is enabled.
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the authentication configuration for connecting to this backend server.
+    /// Used for HTTP/SSE backends that require Azure AD or other OAuth authentication.
+    /// </summary>
+    public BackendAuthConfiguration? Auth { get; set; }
+}
+
+/// <summary>
+/// Authentication type for backend server connections.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<BackendAuthType>))]
+public enum BackendAuthType
+{
+    /// <summary>
+    /// No authentication required.
+    /// </summary>
+    None,
+
+    /// <summary>
+    /// Azure AD authentication using client credentials (app-to-app).
+    /// </summary>
+    AzureAdClientCredentials,
+
+    /// <summary>
+    /// Azure AD authentication using on-behalf-of flow (user delegation).
+    /// </summary>
+    AzureAdOnBehalfOf,
+
+    /// <summary>
+    /// Azure AD authentication using managed identity.
+    /// </summary>
+    AzureAdManagedIdentity
+}
+
+/// <summary>
+/// Authentication configuration for connecting to backend MCP servers.
+/// </summary>
+public sealed class BackendAuthConfiguration
+{
+    /// <summary>
+    /// Gets or sets the authentication type.
+    /// </summary>
+    public BackendAuthType Type { get; set; } = BackendAuthType.None;
+
+    /// <summary>
+    /// Gets or sets the Azure AD configuration for backend authentication.
+    /// </summary>
+    public BackendAzureAdConfiguration AzureAd { get; set; } = new();
+}
+
+/// <summary>
+/// Azure AD configuration for outbound authentication to backend servers.
+/// </summary>
+public sealed class BackendAzureAdConfiguration
+{
+    /// <summary>
+    /// Gets or sets the Azure AD instance URL.
+    /// Default is "https://login.microsoftonline.com/".
+    /// </summary>
+    public string Instance { get; set; } = "https://login.microsoftonline.com/";
+
+    /// <summary>
+    /// Gets or sets the Azure AD tenant ID.
+    /// </summary>
+    public string? TenantId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the client (application) ID of this application.
+    /// </summary>
+    public string? ClientId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the client secret for client credentials flow.
+    /// Supports "env:VARIABLE_NAME" syntax to read from environment variables.
+    /// </summary>
+    public string? ClientSecret { get; set; }
+
+    /// <summary>
+    /// Gets or sets the path to the client certificate for certificate-based authentication.
+    /// </summary>
+    public string? CertificatePath { get; set; }
+
+    /// <summary>
+    /// Gets or sets the certificate thumbprint for certificate-based authentication
+    /// (when loading from certificate store).
+    /// </summary>
+    public string? CertificateThumbprint { get; set; }
+
+    /// <summary>
+    /// Gets or sets the scopes to request when acquiring tokens.
+    /// Example: ["api://backend-api/.default"] or ["https://graph.microsoft.com/.default"]
+    /// </summary>
+    public string[]? Scopes { get; set; }
+
+    /// <summary>
+    /// Gets or sets the managed identity client ID (for user-assigned managed identity).
+    /// Leave null to use system-assigned managed identity.
+    /// </summary>
+    public string? ManagedIdentityClientId { get; set; }
+
+    /// <summary>
+    /// Gets the authority URL constructed from Instance and TenantId.
+    /// </summary>
+    public string Authority => TenantId is not null
+        ? $"{Instance.TrimEnd('/')}/{TenantId}"
+        : Instance.TrimEnd('/');
 }
 
 /// <summary>

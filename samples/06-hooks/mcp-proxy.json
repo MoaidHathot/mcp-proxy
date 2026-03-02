@@ -1,0 +1,130 @@
+{
+  "$schema": "../../mcp-proxy.schema.json",
+  "proxy": {
+    "serverInfo": {
+      "name": "Hooks Example",
+      "version": "1.0.0",
+      "instructions": "This proxy demonstrates hooks for logging, rate limiting, authorization, and content filtering."
+    },
+    "logging": {
+      "logRequests": true,
+      "logResponses": true,
+      "sensitiveDataMask": true
+    }
+  },
+  "mcp": {
+    "filesystem": {
+      "type": "stdio",
+      "title": "Filesystem Server",
+      "description": "Provides file system access tools",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "."],
+      "enabled": true,
+      "hooks": {
+        "preInvoke": [
+          {
+            "type": "logging",
+            "config": {
+              "logLevel": "information",
+              "logArguments": true,
+              "logTimestamp": true
+            }
+          },
+          {
+            "type": "rateLimit",
+            "config": {
+              "maxRequests": 100,
+              "windowSeconds": 60,
+              "scope": "global",
+              "keyExtractor": null
+            }
+          },
+          {
+            "type": "timeout",
+            "config": {
+              "timeoutSeconds": 30
+            }
+          },
+          {
+            "type": "authorization",
+            "config": {
+              "allowedTools": ["read_file", "list_directory", "search_files", "get_file_info"],
+              "deniedTools": ["delete_file"]
+            }
+          }
+        ],
+        "postInvoke": [
+          {
+            "type": "logging",
+            "config": {
+              "logLevel": "information",
+              "logResult": true,
+              "logDuration": true
+            }
+          },
+          {
+            "type": "contentFilter",
+            "config": {
+              "patterns": ["password", "secret", "api[_-]?key", "token"],
+              "action": "redact",
+              "replacement": "[REDACTED]",
+              "caseInsensitive": true
+            }
+          }
+        ]
+      }
+    },
+    "memory": {
+      "type": "stdio",
+      "title": "Memory Server",
+      "description": "Knowledge graph storage with audit logging",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-memory"],
+      "enabled": true,
+      "hooks": {
+        "preInvoke": [
+          {
+            "type": "audit",
+            "config": {
+              "logDestination": "file",
+              "filePath": "./audit.log",
+              "includeUser": true,
+              "includeTimestamp": true,
+              "includeArguments": true
+            }
+          },
+          {
+            "type": "rateLimit",
+            "config": {
+              "maxRequests": 50,
+              "windowSeconds": 60,
+              "scope": "perTool"
+            }
+          }
+        ],
+        "postInvoke": [
+          {
+            "type": "audit",
+            "config": {
+              "logDestination": "file",
+              "filePath": "./audit.log",
+              "includeResult": true,
+              "includeDuration": true
+            }
+          },
+          {
+            "type": "outputTransform",
+            "config": {
+              "transforms": [
+                {
+                  "pattern": "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b",
+                  "replacement": "[EMAIL]"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "../../mcp-proxy.schema.json",
+  "proxy": {
+    "serverInfo": {
+      "name": "OpenTelemetry Example",
+      "version": "1.0.0",
+      "instructions": "This proxy demonstrates OpenTelemetry integration for metrics and tracing."
+    },
+    "telemetry": {
+      "enabled": true,
+      "serviceName": "mcp-proxy",
+      "serviceVersion": "1.0.0",
+      "metrics": {
+        "enabled": true,
+        "consoleExporter": true,
+        "otlpEndpoint": null
+      },
+      "tracing": {
+        "enabled": true,
+        "consoleExporter": true,
+        "otlpEndpoint": null
+      }
+    },
+    "logging": {
+      "logRequests": true,
+      "logResponses": true,
+      "sensitiveDataMask": true
+    }
+  },
+  "mcp": {
+    "filesystem": {
+      "type": "stdio",
+      "title": "Filesystem Server",
+      "description": "Provides file system access tools",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "."],
+      "enabled": true,
+      "hooks": {
+        "preInvoke": [
+          {
+            "type": "metrics",
+            "config": {
+              "recordDuration": true,
+              "recordCount": true,
+              "attributes": {
+                "server": "filesystem"
+              }
+            }
+          }
+        ],
+        "postInvoke": [
+          {
+            "type": "metrics",
+            "config": {
+              "recordDuration": true,
+              "recordErrors": true
+            }
+          }
+        ]
+      }
+    },
+    "time": {
+      "type": "stdio",
+      "title": "Time Server",
+      "description": "Time utilities",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-time"],
+      "enabled": true
+    }
+  }
+}

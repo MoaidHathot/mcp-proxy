@@ -2,7 +2,9 @@ using McpProxy.Abstractions;
 using McpProxy.Core.Configuration;
 using McpProxy.Core.Filtering;
 using McpProxy.Core.Hooks;
+using McpProxy.Core.Hooks.BuiltIn;
 using McpProxy.Core.Logging;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 
@@ -21,6 +23,7 @@ public sealed class SingleServerProxy
     private readonly IToolFilter _filter;
     private readonly IToolTransformer _transformer;
     private readonly ToolPrefixer? _prefixer;
+    private readonly IHttpContextAccessor? _httpContextAccessor;
     private HookPipeline? _hookPipeline;
 
     /// <summary>
@@ -40,12 +43,14 @@ public sealed class SingleServerProxy
         ILogger<SingleServerProxy> logger,
         McpClientManager clientManager,
         string serverName,
-        ServerConfiguration serverConfig)
+        ServerConfiguration serverConfig,
+        IHttpContextAccessor? httpContextAccessor = null)
     {
         _logger = logger;
         _clientManager = clientManager;
         _serverName = serverName;
         _serverConfig = serverConfig;
+        _httpContextAccessor = httpContextAccessor;
 
         _filter = FilterFactory.Create(serverConfig.Tools.Filter);
         _transformer = TransformerFactory.Create(serverConfig.Tools);
@@ -129,6 +134,9 @@ public sealed class SingleServerProxy
 
         ProxyLogger.CallingTool(_logger, originalName, _serverName);
 
+        // Get authentication result from HttpContext if available
+        var authResult = GetAuthenticationResult();
+
         // Create hook context
         var modifiedRequest = new CallToolRequestParams
         {
@@ -141,7 +149,8 @@ public sealed class SingleServerProxy
             ServerName = _serverName,
             ToolName = originalName,
             Request = modifiedRequest,
-            CancellationToken = cancellationToken
+            CancellationToken = cancellationToken,
+            AuthenticationResult = authResult
         };
 
         // Execute pre-invoke hooks
@@ -150,8 +159,49 @@ public sealed class SingleServerProxy
             await _hookPipeline.ExecutePreInvokeHooksAsync(hookContext).ConfigureAwait(false);
         }
 
+        // Use the potentially modified cancellation token from hooks (e.g., TimeoutHook)
+        var effectiveCancellationToken = hookContext.CancellationToken;
+
         try
         {
+            // Call the tool with retry support
+            var result = await ExecuteToolCallWithRetryAsync(
+                clientInfo,
+                hookContext,
+                effectiveCancellationToken).ConfigureAwait(false);
+
+            ProxyLogger.ToolCallCompleted(_logger, originalName);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            ProxyLogger.ToolCallFailed(_logger, originalName, ex);
+            throw;
+        }
+        finally
+        {
+            // Dispose the timeout CTS if it was created
+            if (hookContext.Items.TryGetValue(TimeoutHook.TimeoutCtsKey, out var ctsObj) && 
+                ctsObj is CancellationTokenSource cts)
+            {
+                cts.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Executes a tool call with retry support.
+    /// </summary>
+    private async Task<CallToolResult> ExecuteToolCallWithRetryAsync(
+        McpClientInfo clientInfo,
+        HookContext<CallToolRequestParams> hookContext,
+        CancellationToken cancellationToken)
+    {
+        const int MaxRetryIterations = 10; // Safety limit to prevent infinite loops
+        
+        for (var iteration = 0; iteration < MaxRetryIterations; iteration++)
+        {
+            // Call the tool
             var arguments = hookContext.Request.Arguments?.ToDictionary(p => p.Key, p => (object?)p.Value);
             var result = await clientInfo.Client.CallToolAsync(
                 hookContext.Request.Name,
@@ -164,14 +214,39 @@ public sealed class SingleServerProxy
                 result = await _hookPipeline.ExecutePostInvokeHooksAsync(hookContext, result).ConfigureAwait(false);
             }
 
-            ProxyLogger.ToolCallCompleted(_logger, originalName);
-            return result;
+            // Check if retry was requested by the RetryHook
+            if (!hookContext.Items.TryGetValue(RetryHook.RetryRequestedKey, out var retryRequestedObj) ||
+                retryRequestedObj is not true)
+            {
+                // No retry requested, return the result
+                return result;
+            }
+
+            // Get retry delay
+            var delayMs = 0;
+            if (hookContext.Items.TryGetValue(RetryHook.RetryDelayMsKey, out var delayObj) && delayObj is int delay)
+            {
+                delayMs = delay;
+            }
+
+            // Clear the retry request flag before next iteration
+            hookContext.Items[RetryHook.RetryRequestedKey] = false;
+
+            // Wait before retrying
+            if (delayMs > 0)
+            {
+                await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+            }
+
+            // Continue to next iteration (retry)
         }
-        catch (Exception ex)
+
+        // Should not reach here normally, but return an error if we exhaust iterations
+        return new CallToolResult
         {
-            ProxyLogger.ToolCallFailed(_logger, originalName, ex);
-            throw;
-        }
+            Content = [new TextContentBlock { Text = "Maximum retry iterations exceeded" }],
+            IsError = true
+        };
     }
 
     /// <summary>
@@ -301,5 +376,21 @@ public sealed class SingleServerProxy
     private McpClientInfo? GetClientInfo()
     {
         return _clientManager.Clients.TryGetValue(_serverName, out var clientInfo) ? clientInfo : null;
+    }
+
+    private AuthenticationResult? GetAuthenticationResult()
+    {
+        if (_httpContextAccessor?.HttpContext is null)
+        {
+            return null;
+        }
+
+        if (_httpContextAccessor.HttpContext.Items.TryGetValue("McpProxy.Authentication.Result", out var result) 
+            && result is AuthenticationResult authResult)
+        {
+            return authResult;
+        }
+
+        return null;
     }
 }

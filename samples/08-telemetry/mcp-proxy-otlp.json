@@ -1,0 +1,33 @@
+{
+  "$schema": "../../mcp-proxy.schema.json",
+  "proxy": {
+    "serverInfo": {
+      "name": "OpenTelemetry with OTLP",
+      "version": "1.0.0"
+    },
+    "telemetry": {
+      "enabled": true,
+      "serviceName": "mcp-proxy",
+      "serviceVersion": "1.0.0",
+      "metrics": {
+        "enabled": true,
+        "consoleExporter": false,
+        "otlpEndpoint": "http://localhost:4317"
+      },
+      "tracing": {
+        "enabled": true,
+        "consoleExporter": false,
+        "otlpEndpoint": "http://localhost:4317"
+      }
+    }
+  },
+  "mcp": {
+    "filesystem": {
+      "type": "stdio",
+      "title": "Filesystem Server",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "."],
+      "enabled": true
+    }
+  }
+}

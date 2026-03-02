@@ -1,0 +1,64 @@
+{
+  "$schema": "../../mcp-proxy.schema.json",
+  "proxy": {
+    "serverInfo": {
+      "name": "Remote Servers Example",
+      "version": "1.0.0",
+      "instructions": "This proxy aggregates both local and remote MCP servers."
+    }
+  },
+  "mcp": {
+    "local-filesystem": {
+      "type": "stdio",
+      "title": "Local Filesystem",
+      "description": "Local filesystem access",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "."],
+      "enabled": true,
+      "tools": {
+        "prefix": "local",
+        "prefixSeparator": "_"
+      }
+    },
+    "remote-http": {
+      "type": "http",
+      "title": "Remote HTTP Server",
+      "description": "A remote MCP server using streamable HTTP transport",
+      "url": "https://mcp.example.com/api",
+      "enabled": false,
+      "headers": {
+        "Authorization": "Bearer ${MCP_API_TOKEN}",
+        "X-Custom-Header": "custom-value"
+      },
+      "tools": {
+        "prefix": "remote",
+        "prefixSeparator": "_"
+      }
+    },
+    "remote-sse": {
+      "type": "sse",
+      "title": "Remote SSE Server",
+      "description": "A remote MCP server using Server-Sent Events transport",
+      "url": "https://sse.example.com/mcp/sse",
+      "enabled": false,
+      "headers": {
+        "X-API-Key": "env:REMOTE_API_KEY"
+      },
+      "tools": {
+        "prefix": "sse",
+        "prefixSeparator": "_"
+      }
+    },
+    "context7": {
+      "type": "http",
+      "title": "Context7 Documentation",
+      "description": "Up-to-date documentation for popular libraries via Context7",
+      "url": "https://mcp.context7.com/mcp",
+      "enabled": true,
+      "tools": {
+        "prefix": "c7",
+        "prefixSeparator": "_"
+      }
+    }
+  }
+}

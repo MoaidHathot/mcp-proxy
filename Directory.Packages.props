@@ -11,13 +11,15 @@
     <!-- Core packages -->
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.0-preview.5.25277.114" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.0-preview.5.25277.114" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.0-preview.5.25277.114" />
+    <PackageVersion Include="Microsoft.Identity.Client.Extensions.Msal" Version="4.82.1" />
     <PackageVersion Include="ModelContextProtocol" Version="1.0.0" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.0.0" />
     <PackageVersion Include="Dumpify" Version="0.7.0" />
     <!-- Authentication -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0-preview.5.25277.114" />
     <PackageVersion Include="Microsoft.Identity.Web" Version="3.12.0" />
-    <PackageVersion Include="Microsoft.Identity.Client" Version="4.70.0" />
+    <PackageVersion Include="Microsoft.Identity.Client" Version="4.82.1" />
     <!-- OpenTelemetry -->
     <PackageVersion Include="OpenTelemetry" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.12.0" />
