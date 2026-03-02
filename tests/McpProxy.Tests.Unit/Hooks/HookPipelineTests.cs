@@ -26,7 +26,7 @@ public class HookPipelineTests
             ServerName = "test-server",
             ToolName = toolName,
             Request = new CallToolRequestParams { Name = toolName },
-            CancellationToken = CancellationToken.None
+            CancellationToken = TestContext.Current.CancellationToken
         };
     }
 

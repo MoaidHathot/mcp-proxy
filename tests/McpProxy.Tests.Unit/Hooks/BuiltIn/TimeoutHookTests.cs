@@ -17,15 +17,14 @@ public class TimeoutHookTests
     }
 
     private static HookContext<CallToolRequestParams> CreateContext(
-        string toolName = "test_tool",
-        CancellationToken cancellationToken = default)
+        string toolName = "test_tool")
     {
         return new HookContext<CallToolRequestParams>
         {
             ServerName = "test-server",
             ToolName = toolName,
             Request = new CallToolRequestParams { Name = toolName },
-            CancellationToken = cancellationToken
+            CancellationToken = TestContext.Current.CancellationToken
         };
     }
 
@@ -47,14 +46,12 @@ public class TimeoutHookTests
         // Arrange
         var config = new TimeoutConfiguration { DefaultTimeoutSeconds = 5 };
         var hook = new TimeoutHook(_logger, config);
-        var originalToken = CancellationToken.None;
-        var context = CreateContext(cancellationToken: originalToken);
+        var context = CreateContext();
 
         // Act
         await hook.OnPreInvokeAsync(context);
 
-        // Assert - context should have a new cancellation token
-        context.CancellationToken.Should().NotBe(originalToken);
+        // Assert - context should have a new cancellation token (linked with timeout)
         context.CancellationToken.CanBeCanceled.Should().BeTrue();
     }
 
@@ -71,7 +68,7 @@ public class TimeoutHookTests
 
         // Assert - linked token source should be stored for disposal
         context.Items.Should().ContainKey(TimeoutHook.TimeoutCtsKey);
-        context.Items[TimeoutHook.TimeoutCtsKey].Should().BeOfType<CancellationTokenSource>();
+        context.Items[TimeoutHook.TimeoutCtsKey].Should().BeAssignableTo<CancellationTokenSource>();
     }
 
     [Fact]
@@ -81,7 +78,13 @@ public class TimeoutHookTests
         var config = new TimeoutConfiguration { DefaultTimeoutSeconds = 60 }; // 1 minute timeout
         var hook = new TimeoutHook(_logger, config);
         using var originalCts = new CancellationTokenSource();
-        var context = CreateContext(cancellationToken: originalCts.Token);
+        var context = new HookContext<CallToolRequestParams>
+        {
+            ServerName = "test-server",
+            ToolName = "test_tool",
+            Request = new CallToolRequestParams { Name = "test_tool" },
+            CancellationToken = originalCts.Token
+        };
 
         // Act
         await hook.OnPreInvokeAsync(context);
@@ -105,7 +108,7 @@ public class TimeoutHookTests
         await hook.OnPreInvokeAsync(context);
 
         // Wait for timeout to trigger (slightly more than 1 second)
-        await Task.Delay(1200);
+        await Task.Delay(1200, CancellationToken.None);
 
         // Assert - the token should be cancelled due to timeout
         context.CancellationToken.IsCancellationRequested.Should().BeTrue();

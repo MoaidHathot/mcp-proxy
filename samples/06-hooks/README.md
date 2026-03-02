@@ -271,7 +271,7 @@ Hooks execute in priority order (lowest first). Use custom priorities to control
   "config": {
     "maxRequests": 1000,
     "windowSeconds": 3600,
-    "scope": "perUser"
+    "keyType": "client"
   }
 }
 ```

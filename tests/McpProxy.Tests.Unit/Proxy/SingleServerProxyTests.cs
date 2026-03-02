@@ -101,7 +101,7 @@ public class SingleServerProxyTests : IAsyncDisposable
             var proxy = CreateProxy();
 
             // Act
-            var result = await proxy.ListToolsAsync(CancellationToken.None);
+            var result = await proxy.ListToolsAsync(TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -128,7 +128,7 @@ public class SingleServerProxyTests : IAsyncDisposable
             var proxy = CreateProxy(config);
 
             // Act
-            var result = await proxy.ListToolsAsync(CancellationToken.None);
+            var result = await proxy.ListToolsAsync(TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -151,7 +151,7 @@ public class SingleServerProxyTests : IAsyncDisposable
             var proxy = CreateProxy(config);
 
             // Act
-            var result = await proxy.ListToolsAsync(CancellationToken.None);
+            var result = await proxy.ListToolsAsync(TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -172,7 +172,7 @@ public class SingleServerProxyTests : IAsyncDisposable
             };
 
             // Act
-            var result = await proxy.CallToolAsync(request, CancellationToken.None);
+            var result = await proxy.CallToolAsync(request, TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -204,7 +204,7 @@ public class SingleServerProxyTests : IAsyncDisposable
             };
 
             // Act
-            var result = await proxy.CallToolAsync(request, CancellationToken.None);
+            var result = await proxy.CallToolAsync(request, TestContext.Current.CancellationToken);
 
             // Assert - No client, so returns error
             result.Should().NotBeNull();
@@ -221,7 +221,7 @@ public class SingleServerProxyTests : IAsyncDisposable
             var proxy = CreateProxy();
 
             // Act
-            var result = await proxy.ListResourcesAsync(CancellationToken.None);
+            var result = await proxy.ListResourcesAsync(TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -242,7 +242,7 @@ public class SingleServerProxyTests : IAsyncDisposable
             };
 
             // Act
-            var result = await proxy.ReadResourceAsync(request, CancellationToken.None);
+            var result = await proxy.ReadResourceAsync(request, TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -262,7 +262,7 @@ public class SingleServerProxyTests : IAsyncDisposable
             var proxy = CreateProxy();
 
             // Act
-            var result = await proxy.ListPromptsAsync(CancellationToken.None);
+            var result = await proxy.ListPromptsAsync(TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -283,7 +283,7 @@ public class SingleServerProxyTests : IAsyncDisposable
             };
 
             // Act
-            var result = await proxy.GetPromptAsync(request, CancellationToken.None);
+            var result = await proxy.GetPromptAsync(request, TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -329,7 +329,7 @@ public class SingleServerProxyTests : IAsyncDisposable
             };
 
             // Act
-            var result = await proxy.CallToolAsync(request, CancellationToken.None);
+            var result = await proxy.CallToolAsync(request, TestContext.Current.CancellationToken);
 
             // Assert - No client connected, but hooks should still execute
             // Looking at the code, the hook runs after the client check

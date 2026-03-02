@@ -29,7 +29,7 @@ public class AuditHookTests
             ServerName = "test-server",
             ToolName = toolName,
             Request = new CallToolRequestParams { Name = toolName },
-            CancellationToken = CancellationToken.None,
+            CancellationToken = TestContext.Current.CancellationToken,
             AuthenticationResult = authResult
         };
     }

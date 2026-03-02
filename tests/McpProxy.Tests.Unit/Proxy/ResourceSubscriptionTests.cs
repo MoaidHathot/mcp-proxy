@@ -73,7 +73,7 @@ public class ResourceSubscriptionTests : IAsyncDisposable
             RegisterMockClient("server1", mockClient);
 
             // Act
-            var result = await _proxyServer.SubscribeToResourceCoreAsync("file:///test.txt", CancellationToken.None);
+            var result = await _proxyServer.SubscribeToResourceCoreAsync("file:///test.txt", TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -91,7 +91,7 @@ public class ResourceSubscriptionTests : IAsyncDisposable
             RegisterMockClient("server1", mockClient);
 
             // Act
-            var result = await _proxyServer.SubscribeToResourceCoreAsync("file:///nonexistent.txt", CancellationToken.None);
+            var result = await _proxyServer.SubscribeToResourceCoreAsync("file:///nonexistent.txt", TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -116,7 +116,7 @@ public class ResourceSubscriptionTests : IAsyncDisposable
             RegisterMockClient("server2", mockClient2);
 
             // Act
-            var result = await _proxyServer.SubscribeToResourceCoreAsync("file:///server2.txt", CancellationToken.None);
+            var result = await _proxyServer.SubscribeToResourceCoreAsync("file:///server2.txt", TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -138,7 +138,7 @@ public class ResourceSubscriptionTests : IAsyncDisposable
 
             // Act & Assert
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-                async () => await _proxyServer.SubscribeToResourceCoreAsync("file:///test.txt", CancellationToken.None));
+                async () => await _proxyServer.SubscribeToResourceCoreAsync("file:///test.txt", TestContext.Current.CancellationToken));
             exception.Message.Should().Be("Backend error");
         }
     }
@@ -158,7 +158,7 @@ public class ResourceSubscriptionTests : IAsyncDisposable
             RegisterMockClient("server1", mockClient);
 
             // Act
-            var result = await _proxyServer.UnsubscribeFromResourceCoreAsync("file:///test.txt", CancellationToken.None);
+            var result = await _proxyServer.UnsubscribeFromResourceCoreAsync("file:///test.txt", TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -176,7 +176,7 @@ public class ResourceSubscriptionTests : IAsyncDisposable
             RegisterMockClient("server1", mockClient);
 
             // Act
-            var result = await _proxyServer.UnsubscribeFromResourceCoreAsync("file:///nonexistent.txt", CancellationToken.None);
+            var result = await _proxyServer.UnsubscribeFromResourceCoreAsync("file:///nonexistent.txt", TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -201,7 +201,7 @@ public class ResourceSubscriptionTests : IAsyncDisposable
             RegisterMockClient("server2", mockClient2);
 
             // Act
-            var result = await _proxyServer.UnsubscribeFromResourceCoreAsync("file:///server2.txt", CancellationToken.None);
+            var result = await _proxyServer.UnsubscribeFromResourceCoreAsync("file:///server2.txt", TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -223,7 +223,7 @@ public class ResourceSubscriptionTests : IAsyncDisposable
 
             // Act & Assert
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-                async () => await _proxyServer.UnsubscribeFromResourceCoreAsync("file:///test.txt", CancellationToken.None));
+                async () => await _proxyServer.UnsubscribeFromResourceCoreAsync("file:///test.txt", TestContext.Current.CancellationToken));
             exception.Message.Should().Be("Backend error");
         }
     }
@@ -273,7 +273,7 @@ public class ResourceSubscriptionManagerTests : IAsyncDisposable
             RegisterMockClient("server1", mockClient);
 
             // Act
-            var result = await _subscriptionManager.SubscribeAsync("file:///test.txt");
+            var result = await _subscriptionManager.SubscribeAsync("file:///test.txt", TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().BeTrue();
@@ -291,7 +291,7 @@ public class ResourceSubscriptionManagerTests : IAsyncDisposable
             RegisterMockClient("server1", mockClient);
 
             // Act
-            var result = await _subscriptionManager.SubscribeAsync("file:///nonexistent.txt");
+            var result = await _subscriptionManager.SubscribeAsync("file:///nonexistent.txt", TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().BeFalse();
@@ -311,7 +311,7 @@ public class ResourceSubscriptionManagerTests : IAsyncDisposable
             RegisterMockClient("server1", mockClient);
 
             // Act
-            await _subscriptionManager.SubscribeAsync("file:///test.txt");
+            await _subscriptionManager.SubscribeAsync("file:///test.txt", TestContext.Current.CancellationToken);
 
             // Assert
             _subscriptionManager.GetSubscriptionServer("file:///test.txt").Should().Be("server1");
@@ -330,7 +330,7 @@ public class ResourceSubscriptionManagerTests : IAsyncDisposable
             RegisterMockClient("server1", mockClient);
 
             // Act
-            var result = await _subscriptionManager.SubscribeAsync("file:///test.txt");
+            var result = await _subscriptionManager.SubscribeAsync("file:///test.txt", TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().BeFalse();
@@ -354,10 +354,10 @@ public class ResourceSubscriptionManagerTests : IAsyncDisposable
             RegisterMockClient("server1", mockClient);
 
             // First subscribe
-            await _subscriptionManager.SubscribeAsync("file:///test.txt");
+            await _subscriptionManager.SubscribeAsync("file:///test.txt", TestContext.Current.CancellationToken);
 
             // Act
-            var result = await _subscriptionManager.UnsubscribeAsync("file:///test.txt");
+            var result = await _subscriptionManager.UnsubscribeAsync("file:///test.txt", TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().BeTrue();
@@ -377,7 +377,7 @@ public class ResourceSubscriptionManagerTests : IAsyncDisposable
             RegisterMockClient("server1", mockClient);
 
             // Act - unsubscribe without prior subscribe
-            var result = await _subscriptionManager.UnsubscribeAsync("file:///test.txt");
+            var result = await _subscriptionManager.UnsubscribeAsync("file:///test.txt", TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().BeTrue();
@@ -395,7 +395,7 @@ public class ResourceSubscriptionManagerTests : IAsyncDisposable
             RegisterMockClient("server1", mockClient);
 
             // Act
-            var result = await _subscriptionManager.UnsubscribeAsync("file:///nonexistent.txt");
+            var result = await _subscriptionManager.UnsubscribeAsync("file:///nonexistent.txt", TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().BeFalse();
@@ -417,11 +417,11 @@ public class ResourceSubscriptionManagerTests : IAsyncDisposable
             RegisterMockClient("server1", mockClient);
 
             // Subscribe first
-            await _subscriptionManager.SubscribeAsync("file:///test.txt");
+            await _subscriptionManager.SubscribeAsync("file:///test.txt", TestContext.Current.CancellationToken);
             _subscriptionManager.GetSubscriptionServer("file:///test.txt").Should().Be("server1");
 
             // Act
-            await _subscriptionManager.UnsubscribeAsync("file:///test.txt");
+            await _subscriptionManager.UnsubscribeAsync("file:///test.txt", TestContext.Current.CancellationToken);
 
             // Assert - subscription should be removed from tracking
             _subscriptionManager.GetSubscriptionServer("file:///test.txt").Should().BeNull();
@@ -446,8 +446,8 @@ public class ResourceSubscriptionManagerTests : IAsyncDisposable
             RegisterMockClient("server1", mockClient);
 
             // Subscribe to multiple resources
-            await _subscriptionManager.SubscribeAsync("file:///test1.txt");
-            await _subscriptionManager.SubscribeAsync("file:///test2.txt");
+            await _subscriptionManager.SubscribeAsync("file:///test1.txt", TestContext.Current.CancellationToken);
+            await _subscriptionManager.SubscribeAsync("file:///test2.txt", TestContext.Current.CancellationToken);
 
             // Act
             var subscriptions = _subscriptionManager.GetActiveSubscriptions();

@@ -52,15 +52,15 @@ public class OAuthMetadataEndpointsTests
             };
 
             using var host = CreateTestHost(authConfig);
-            await host.StartAsync();
+            await host.StartAsync(TestContext.Current.CancellationToken);
             var client = host.GetTestClient();
 
             // Act
-            var response = await client.GetAsync("/.well-known/oauth-authorization-server");
+            var response = await client.GetAsync("/.well-known/oauth-authorization-server", TestContext.Current.CancellationToken);
 
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.OK);
-            var content = await response.Content.ReadAsStringAsync();
+            var content = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             var metadata = JsonSerializer.Deserialize<JsonElement>(content);
 
             metadata.GetProperty("issuer").GetString().Should().Contain("test-tenant-id");
@@ -87,16 +87,16 @@ public class OAuthMetadataEndpointsTests
             };
 
             using var host = CreateTestHost(authConfig);
-            await host.StartAsync();
+            await host.StartAsync(TestContext.Current.CancellationToken);
             var client = host.GetTestClient();
 
             // Act
-            var oauthResponse = await client.GetAsync("/.well-known/oauth-authorization-server");
-            var openIdResponse = await client.GetAsync("/.well-known/openid-configuration");
+            var oauthResponse = await client.GetAsync("/.well-known/oauth-authorization-server", TestContext.Current.CancellationToken);
+            var openIdResponse = await client.GetAsync("/.well-known/openid-configuration", TestContext.Current.CancellationToken);
 
             // Assert
-            var oauthContent = await oauthResponse.Content.ReadAsStringAsync();
-            var openIdContent = await openIdResponse.Content.ReadAsStringAsync();
+            var oauthContent = await oauthResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            var openIdContent = await openIdResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
             oauthContent.Should().Be(openIdContent);
         }
@@ -117,12 +117,12 @@ public class OAuthMetadataEndpointsTests
             };
 
             using var host = CreateTestHost(authConfig);
-            await host.StartAsync();
+            await host.StartAsync(TestContext.Current.CancellationToken);
             var client = host.GetTestClient();
 
             // Act
-            var response = await client.GetAsync("/.well-known/oauth-authorization-server");
-            var content = await response.Content.ReadAsStringAsync();
+            var response = await client.GetAsync("/.well-known/oauth-authorization-server", TestContext.Current.CancellationToken);
+            var content = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             var metadata = JsonSerializer.Deserialize<JsonElement>(content);
 
             // Assert
@@ -144,11 +144,11 @@ public class OAuthMetadataEndpointsTests
             };
 
             using var host = CreateTestHost(authConfig);
-            await host.StartAsync();
+            await host.StartAsync(TestContext.Current.CancellationToken);
             var client = host.GetTestClient();
 
             // Act
-            var response = await client.GetAsync("/.well-known/oauth-authorization-server");
+            var response = await client.GetAsync("/.well-known/oauth-authorization-server", TestContext.Current.CancellationToken);
 
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -173,12 +173,12 @@ public class OAuthMetadataEndpointsTests
             };
 
             using var host = CreateTestHost(authConfig);
-            await host.StartAsync();
+            await host.StartAsync(TestContext.Current.CancellationToken);
             var client = host.GetTestClient();
 
             // Act
-            var response = await client.GetAsync("/.well-known/oauth-authorization-server");
-            var content = await response.Content.ReadAsStringAsync();
+            var response = await client.GetAsync("/.well-known/oauth-authorization-server", TestContext.Current.CancellationToken);
+            var content = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             var metadata = JsonSerializer.Deserialize<JsonElement>(content);
 
             // Assert
@@ -206,12 +206,12 @@ public class OAuthMetadataEndpointsTests
             };
 
             using var host = CreateTestHost(authConfig);
-            await host.StartAsync();
+            await host.StartAsync(TestContext.Current.CancellationToken);
             var client = host.GetTestClient();
 
             // Act
-            var response = await client.GetAsync("/.well-known/oauth-authorization-server");
-            var content = await response.Content.ReadAsStringAsync();
+            var response = await client.GetAsync("/.well-known/oauth-authorization-server", TestContext.Current.CancellationToken);
+            var content = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             var metadata = JsonSerializer.Deserialize<JsonElement>(content);
 
             // Assert

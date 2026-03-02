@@ -84,7 +84,7 @@ public class NotificationForwarderTests
             };
 
             // Act & Assert - should not throw
-            await handler(notification, CancellationToken.None);
+            await handler(notification, TestContext.Current.CancellationToken);
         }
 
         [Fact]
@@ -112,7 +112,7 @@ public class NotificationForwarderTests
             };
 
             // Act & Assert - should not throw even without McpServer set
-            await handler(notification, CancellationToken.None);
+            await handler(notification, TestContext.Current.CancellationToken);
         }
 
         [Fact]
@@ -127,7 +127,7 @@ public class NotificationForwarderTests
             };
 
             // Act & Assert - should catch JsonException internally
-            await handler(notification, CancellationToken.None);
+            await handler(notification, TestContext.Current.CancellationToken);
         }
     }
 
@@ -145,7 +145,7 @@ public class NotificationForwarderTests
             };
 
             // Act & Assert - should not throw
-            await handler(notification, CancellationToken.None);
+            await handler(notification, TestContext.Current.CancellationToken);
         }
 
         [Fact]
@@ -160,7 +160,7 @@ public class NotificationForwarderTests
             };
 
             // Act & Assert - should not throw even without McpServer set
-            await handler(notification, CancellationToken.None);
+            await handler(notification, TestContext.Current.CancellationToken);
         }
 
         [Fact]
@@ -190,9 +190,10 @@ public class NotificationForwarderTests
             };
 
             // Act & Assert - all should work independently
-            await toolsHandler(toolsNotification, CancellationToken.None);
-            await resourcesHandler(resourcesNotification, CancellationToken.None);
-            await promptsHandler(promptsNotification, CancellationToken.None);
+            var ct = TestContext.Current.CancellationToken;
+            await toolsHandler(toolsNotification, ct);
+            await resourcesHandler(resourcesNotification, ct);
+            await promptsHandler(promptsNotification, ct);
         }
     }
 

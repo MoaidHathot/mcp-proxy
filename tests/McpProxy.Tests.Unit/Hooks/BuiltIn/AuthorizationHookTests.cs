@@ -40,7 +40,7 @@ public class AuthorizationHookTests
             ServerName = serverName,
             ToolName = toolName,
             Request = new CallToolRequestParams { Name = toolName },
-            CancellationToken = CancellationToken.None,
+            CancellationToken = TestContext.Current.CancellationToken,
             AuthenticationResult = authResult
         };
     }

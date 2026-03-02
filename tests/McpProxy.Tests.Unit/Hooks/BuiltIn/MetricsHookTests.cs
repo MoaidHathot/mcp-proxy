@@ -37,7 +37,7 @@ public class MetricsHookTests : IDisposable
             ServerName = "test-server",
             ToolName = toolName,
             Request = new CallToolRequestParams { Name = toolName },
-            CancellationToken = CancellationToken.None
+            CancellationToken = TestContext.Current.CancellationToken
         };
     }
 
@@ -174,7 +174,7 @@ public class MetricsHookTests : IDisposable
         await hook.OnPreInvokeAsync(context);
 
         // Simulate some delay
-        await Task.Delay(10);
+        await Task.Delay(10, TestContext.Current.CancellationToken);
 
         var result = CreateSuccessResult();
 
@@ -244,7 +244,7 @@ public class MetricsHookTests : IDisposable
         context.Items.Should().ContainKey(MetricsHook.StopwatchKey);
         context.Items.Should().ContainKey(MetricsHook.RequestSizeKey);
 
-        await Task.Delay(5);
+        await Task.Delay(5, TestContext.Current.CancellationToken);
         var result = CreateSuccessResult();
 
         var returned = await hook.OnPostInvokeAsync(context, result);

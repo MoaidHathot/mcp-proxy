@@ -56,7 +56,7 @@ public class ProxyClientHandlersTests
             var progress = Substitute.For<IProgress<ProgressNotificationValue>>();
 
             // Act
-            var result = await _handlers.HandleSamplingAsync(request, progress, CancellationToken.None);
+            var result = await _handlers.HandleSamplingAsync(request, progress, TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -75,7 +75,7 @@ public class ProxyClientHandlersTests
             var progress = Substitute.For<IProgress<ProgressNotificationValue>>();
 
             // Act
-            var result = await _handlers.HandleSamplingAsync(null, progress, CancellationToken.None);
+            var result = await _handlers.HandleSamplingAsync(null, progress, TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -99,7 +99,7 @@ public class ProxyClientHandlersTests
             };
 
             // Act
-            var result = await _handlers.HandleElicitationAsync(request, CancellationToken.None);
+            var result = await _handlers.HandleElicitationAsync(request, TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -110,7 +110,7 @@ public class ProxyClientHandlersTests
         public async Task HandleElicitationAsync_WhenRequestIsNull_ReturnsDeclinedResult()
         {
             // Act
-            var result = await _handlers.HandleElicitationAsync(null, CancellationToken.None);
+            var result = await _handlers.HandleElicitationAsync(null, TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -127,7 +127,7 @@ public class ProxyClientHandlersTests
             var request = new ListRootsRequestParams();
 
             // Act
-            var result = await _handlers.HandleRootsAsync(request, CancellationToken.None);
+            var result = await _handlers.HandleRootsAsync(request, TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();
@@ -138,7 +138,7 @@ public class ProxyClientHandlersTests
         public async Task HandleRootsAsync_WhenRequestIsNull_ReturnsEmptyRoots()
         {
             // Act
-            var result = await _handlers.HandleRootsAsync(null, CancellationToken.None);
+            var result = await _handlers.HandleRootsAsync(null, TestContext.Current.CancellationToken);
 
             // Assert
             result.Should().NotBeNull();

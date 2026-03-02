@@ -39,7 +39,7 @@ public class AzureAdAuthHandlerTests
             var context = CreateHttpContext();
 
             // Act
-            var result = await handler.AuthenticateAsync(context);
+            var result = await handler.AuthenticateAsync(context, TestContext.Current.CancellationToken);
 
             // Assert
             result.IsAuthenticated.Should().BeFalse();
@@ -55,7 +55,7 @@ public class AzureAdAuthHandlerTests
             var context = CreateHttpContext("Basic dXNlcjpwYXNz");
 
             // Act
-            var result = await handler.AuthenticateAsync(context);
+            var result = await handler.AuthenticateAsync(context, TestContext.Current.CancellationToken);
 
             // Assert
             result.IsAuthenticated.Should().BeFalse();
@@ -71,7 +71,7 @@ public class AzureAdAuthHandlerTests
             var context = CreateHttpContext("Bearer ");
 
             // Act
-            var result = await handler.AuthenticateAsync(context);
+            var result = await handler.AuthenticateAsync(context, TestContext.Current.CancellationToken);
 
             // Assert
             result.IsAuthenticated.Should().BeFalse();
@@ -87,7 +87,7 @@ public class AzureAdAuthHandlerTests
             var context = CreateHttpContext("Bearer not-a-valid-jwt");
 
             // Act
-            var result = await handler.AuthenticateAsync(context);
+            var result = await handler.AuthenticateAsync(context, TestContext.Current.CancellationToken);
 
             // Assert
             result.IsAuthenticated.Should().BeFalse();
@@ -106,7 +106,7 @@ public class AzureAdAuthHandlerTests
             var context = CreateHttpContext();
 
             // Act
-            await handler.ChallengeAsync(context);
+            await handler.ChallengeAsync(context, TestContext.Current.CancellationToken);
 
             // Assert
             context.Response.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
@@ -121,7 +121,7 @@ public class AzureAdAuthHandlerTests
             var context = CreateHttpContext();
 
             // Act
-            await handler.ChallengeAsync(context);
+            await handler.ChallengeAsync(context, TestContext.Current.CancellationToken);
 
             // Assert
             var wwwAuthHeader = context.Response.Headers.WWWAuthenticate.ToString();
