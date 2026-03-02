@@ -5,13 +5,26 @@
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <PropertyGroup>
-    <DotnetVersion>9.0.0</DotnetVersion>
+    <DotnetVersion>10.0.0</DotnetVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.7" />
-    <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.7" />
+    <!-- Core packages -->
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.0-preview.5.25277.114" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.0-preview.5.25277.114" />
     <PackageVersion Include="ModelContextProtocol" Version="0.6.0-preview.1" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.6.0-preview.1" />
     <PackageVersion Include="Dumpify" Version="0.6.6" />
+    <!-- Authentication -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0-preview.5.25277.114" />
+    <!-- CLI -->
+    <PackageVersion Include="System.CommandLine" Version="2.0.0-beta5.25306.1" />
+    <!-- Test packages -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.0" />
+    <PackageVersion Include="FluentAssertions" Version="8.2.0" />
+    <PackageVersion Include="NSubstitute" Version="5.3.0" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0-preview.5.25277.114" />
   </ItemGroup>
 </Project>

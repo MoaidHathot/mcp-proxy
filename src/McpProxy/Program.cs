@@ -1,224 +1,430 @@
-using System.Text.Json;
-using McpProxy.Console;
-using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
+using System.CommandLine;
+using McpProxy.Core.Configuration;
+using McpProxy.Core.Hooks;
+using McpProxy.Core.Logging;
+using McpProxy.Core.Proxy;
 
-// Parse command-line arguments
-var config = ParseArguments(args);
-
-if (config.TransportType == ServerTransportType.Stdio)
+var transportOption = new Option<TransportType>("--transport", "-t")
 {
-    await RunStdioServer(args, config).ConfigureAwait(false);
+    Description = "Server transport type",
+    DefaultValueFactory = _ => TransportType.Stdio
+};
+
+var configOption = new Option<string?>("--config", "-c")
+{
+    Description = "Path to mcp-proxy.json configuration file"
+};
+
+var portOption = new Option<int>("--port", "-p")
+{
+    Description = "Port for HTTP/SSE server (default: 5000)",
+    DefaultValueFactory = _ => 5000
+};
+
+var verboseOption = new Option<bool>("--verbose", "-v")
+{
+    Description = "Enable verbose logging",
+    DefaultValueFactory = _ => false
+};
+
+var rootCommand = new RootCommand("MCP Proxy - Aggregates multiple MCP servers into a single endpoint");
+rootCommand.Options.Add(transportOption);
+rootCommand.Options.Add(configOption);
+rootCommand.Options.Add(portOption);
+rootCommand.Options.Add(verboseOption);
+
+rootCommand.SetAction(async (parseResult, cancellationToken) =>
+{
+    var transport = parseResult.GetValue(transportOption);
+    var configPath = parseResult.GetValue(configOption);
+    var port = parseResult.GetValue(portOption);
+    var verbose = parseResult.GetValue(verboseOption);
+    await RunProxyAsync(transport, configPath, port, verbose, cancellationToken).ConfigureAwait(false);
+});
+
+return await rootCommand.Parse(args).InvokeAsync().ConfigureAwait(false);
+
+async Task RunProxyAsync(TransportType transport, string? configPath, int port, bool verbose, CancellationToken cancellationToken)
+{
+    // Resolve config path
+    configPath ??= Environment.GetEnvironmentVariable("MCP_PROXY_CONFIG_PATH");
+
+    if (string.IsNullOrEmpty(configPath))
+    {
+        // Try default locations
+        var defaultPaths = new[] { "mcp-proxy.json", "config/mcp-proxy.json" };
+        configPath = defaultPaths.FirstOrDefault(File.Exists);
+    }
+
+    if (string.IsNullOrEmpty(configPath) || !File.Exists(configPath))
+    {
+        Console.Error.WriteLine("Error: Configuration file not found.");
+        Console.Error.WriteLine("Provide config path via --config option or MCP_PROXY_CONFIG_PATH environment variable.");
+        Environment.Exit(1);
+        return;
+    }
+
+    // Load configuration
+    var configuration = await ConfigurationLoader.LoadAsync(configPath, cancellationToken).ConfigureAwait(false);
+
+    if (transport == TransportType.Stdio)
+    {
+        await RunStdioServerAsync(configuration, verbose).ConfigureAwait(false);
+    }
+    else
+    {
+        await RunHttpServerAsync(configuration, port, verbose).ConfigureAwait(false);
+    }
 }
-else
-{
-    await RunSseServer(args, config).ConfigureAwait(false);
-}
 
-async Task RunStdioServer(string[] args, ProxyConfig proxyConfig)
+async Task RunStdioServerAsync(ProxyConfiguration configuration, bool verbose)
 {
-    var builder = Host.CreateApplicationBuilder(args);
-    var clients = await SetupMcpClients(proxyConfig.ConfigPath, builder.Environment).ConfigureAwait(false);
+    var builder = Host.CreateApplicationBuilder();
+    ConfigureLogging(builder.Services, verbose);
 
+    // Register services
+    builder.Services.AddSingleton(configuration);
+    builder.Services.AddSingleton<ProxyClientHandlers>();
+    builder.Services.AddSingleton<McpClientManager>();
+    builder.Services.AddSingleton<HookFactory>();
+    builder.Services.AddSingleton<McpProxyServer>();
+
+    // Configure MCP Server with all handlers
     builder.Services
         .AddMcpServer()
         .WithStdioServerTransport()
-        .WithListToolsHandler((context, token) => ListProxyTools(clients, context, token))
-        .WithCallToolHandler((context, token) => CallProxyTools(clients, context, token));
+        .WithListToolsHandler((context, token) =>
+        {
+            // Ensure ProxyClientHandlers has the McpServer reference
+            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
+            handlers.SetMcpServer(context.Server);
+            
+            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+            return proxy.ListToolsAsync(context, token);
+        })
+        .WithCallToolHandler((context, token) =>
+        {
+            // Ensure ProxyClientHandlers has the McpServer reference
+            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
+            handlers.SetMcpServer(context.Server);
+            
+            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+            return proxy.CallToolAsync(context, token);
+        })
+        .WithListResourcesHandler((context, token) =>
+        {
+            // Ensure ProxyClientHandlers has the McpServer reference
+            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
+            handlers.SetMcpServer(context.Server);
+            
+            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+            return proxy.ListResourcesAsync(context, token);
+        })
+        .WithReadResourceHandler((context, token) =>
+        {
+            // Ensure ProxyClientHandlers has the McpServer reference
+            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
+            handlers.SetMcpServer(context.Server);
+            
+            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+            return proxy.ReadResourceAsync(context, token);
+        })
+        .WithListPromptsHandler((context, token) =>
+        {
+            // Ensure ProxyClientHandlers has the McpServer reference
+            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
+            handlers.SetMcpServer(context.Server);
+            
+            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+            return proxy.ListPromptsAsync(context, token);
+        })
+        .WithGetPromptHandler((context, token) =>
+        {
+            // Ensure ProxyClientHandlers has the McpServer reference
+            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
+            handlers.SetMcpServer(context.Server);
+            
+            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+            return proxy.GetPromptAsync(context, token);
+        });
 
-    await builder.Build().RunAsync().ConfigureAwait(false);
+    var host = builder.Build();
+
+    // Initialize backend connections and configure hooks
+    var clientManager = host.Services.GetRequiredService<McpClientManager>();
+    var proxyClientHandlers = host.Services.GetRequiredService<ProxyClientHandlers>();
+    var proxyServer = host.Services.GetRequiredService<McpProxyServer>();
+    var hookFactory = host.Services.GetRequiredService<HookFactory>();
+    var logger = host.Services.GetRequiredService<ILogger<Program>>();
+    var pipelineLogger = host.Services.GetRequiredService<ILogger<HookPipeline>>();
+
+    ProxyLogger.ProxyStarting(logger, "stdio");
+    await clientManager.InitializeAsync(configuration).ConfigureAwait(false);
+    
+    // Configure hook pipelines from configuration
+    ConfigureHookPipelines(configuration, proxyServer, hookFactory, pipelineLogger);
+    
+    ProxyLogger.ProxyStarted(logger, "stdio");
+
+    // Note: The McpServer instance will be set on ProxyClientHandlers when the first request comes in
+    // via the request context. For STDIO transport, there's typically only one client session.
+
+    await host.RunAsync().ConfigureAwait(false);
 }
 
-async Task RunSseServer(string[] args, ProxyConfig proxyConfig)
+async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool verbose)
 {
-    var builder = WebApplication.CreateBuilder(args);
-    var clients = await SetupMcpClients(proxyConfig.ConfigPath, builder.Environment).ConfigureAwait(false);
+    var builder = WebApplication.CreateBuilder();
+    builder.WebHost.UseUrls($"http://localhost:{port}");
+    ConfigureLogging(builder.Services, verbose);
 
+    // Register services
+    builder.Services.AddSingleton(configuration);
+    builder.Services.AddSingleton<ProxyClientHandlers>();
+    builder.Services.AddSingleton<McpClientManager>();
+    builder.Services.AddSingleton<HookFactory>();
+    builder.Services.AddSingleton<McpProxyServer>();
+
+    // Register SingleServerProxy instances for PerServer mode
+    if (configuration.Proxy.Routing.Mode == RoutingMode.PerServer)
+    {
+        foreach (var (serverName, serverConfig) in configuration.Mcp.Where(m => m.Value.Enabled))
+        {
+            builder.Services.AddKeyedSingleton(serverName, (sp, _) =>
+            {
+                var logger = sp.GetRequiredService<ILogger<SingleServerProxy>>();
+                var clientManager = sp.GetRequiredService<McpClientManager>();
+                return new SingleServerProxy(logger, clientManager, serverName, serverConfig);
+            });
+        }
+    }
+
+    // Configure MCP Server with all handlers
     builder.Services
         .AddMcpServer()
         .WithHttpTransport()
-        .WithListToolsHandler((context, token) => ListProxyTools(clients, context, token))
-        .WithCallToolHandler((context, token) => CallProxyTools(clients, context, token));
+        .WithListToolsHandler((context, token) =>
+        {
+            // Ensure ProxyClientHandlers has the McpServer reference
+            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
+            handlers.SetMcpServer(context.Server);
+            
+            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+            return proxy.ListToolsAsync(context, token);
+        })
+        .WithCallToolHandler((context, token) =>
+        {
+            // Ensure ProxyClientHandlers has the McpServer reference
+            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
+            handlers.SetMcpServer(context.Server);
+            
+            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+            return proxy.CallToolAsync(context, token);
+        })
+        .WithListResourcesHandler((context, token) =>
+        {
+            // Ensure ProxyClientHandlers has the McpServer reference
+            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
+            handlers.SetMcpServer(context.Server);
+            
+            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+            return proxy.ListResourcesAsync(context, token);
+        })
+        .WithReadResourceHandler((context, token) =>
+        {
+            // Ensure ProxyClientHandlers has the McpServer reference
+            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
+            handlers.SetMcpServer(context.Server);
+            
+            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+            return proxy.ReadResourceAsync(context, token);
+        })
+        .WithListPromptsHandler((context, token) =>
+        {
+            // Ensure ProxyClientHandlers has the McpServer reference
+            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
+            handlers.SetMcpServer(context.Server);
+            
+            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+            return proxy.ListPromptsAsync(context, token);
+        })
+        .WithGetPromptHandler((context, token) =>
+        {
+            // Ensure ProxyClientHandlers has the McpServer reference
+            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
+            handlers.SetMcpServer(context.Server);
+            
+            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+            return proxy.GetPromptAsync(context, token);
+        });
 
     var app = builder.Build();
 
-    app.MapMcp();
+    // Initialize backend connections and configure hooks
+    var clientManager = app.Services.GetRequiredService<McpClientManager>();
+    var proxyClientHandlers = app.Services.GetRequiredService<ProxyClientHandlers>();
+    var proxyServer = app.Services.GetRequiredService<McpProxyServer>();
+    var hookFactory = app.Services.GetRequiredService<HookFactory>();
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    var pipelineLogger = app.Services.GetRequiredService<ILogger<HookPipeline>>();
 
-    // System.Console.WriteLine($"MCP Proxy SSE server started");
+    var url = $"http://localhost:{port}";
+    ProxyLogger.ProxyStarting(logger, "http");
+    await clientManager.InitializeAsync(configuration).ConfigureAwait(false);
+    
+    // Configure hook pipelines from configuration
+    ConfigureHookPipelines(configuration, proxyServer, hookFactory, pipelineLogger);
+
+    // Configure SingleServerProxy hook pipelines for PerServer mode
+    if (configuration.Proxy.Routing.Mode == RoutingMode.PerServer)
+    {
+        foreach (var (serverName, serverConfig) in configuration.Mcp.Where(m => m.Value.Enabled))
+        {
+            var singleServerProxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+            ConfigureSingleServerHookPipeline(serverName, serverConfig, singleServerProxy, hookFactory, pipelineLogger);
+        }
+    }
+    
+    ProxyLogger.ProxyStarted(logger, url);
+
+    // Map MCP endpoints based on routing mode
+    if (configuration.Proxy.Routing.Mode == RoutingMode.PerServer)
+    {
+        // PerServer mode: Each server gets its own endpoint
+        // Map to base path for unified endpoint (still available for discovery)
+        app.MapMcp(configuration.Proxy.Routing.BasePath);
+        
+        // Map individual server endpoints
+        foreach (var (serverName, serverConfig) in configuration.Mcp.Where(m => m.Value.Enabled))
+        {
+            var route = serverConfig.Route ?? $"{configuration.Proxy.Routing.BasePath}/{serverName}";
+            MapSingleServerEndpoint(app, serverName, route);
+            ProxyLogger.RegisteredServerEndpoint(logger, serverName, route);
+        }
+    }
+    else
+    {
+        // Unified mode: All servers on one endpoint
+        app.MapMcp(configuration.Proxy.Routing.BasePath);
+    }
 
     await app.RunAsync().ConfigureAwait(false);
 }
 
-async Task<IReadOnlyDictionary<string, McpInfo>> SetupMcpClients(string? configPath, IHostEnvironment environment)
+void MapSingleServerEndpoint(WebApplication app, string serverName, string route)
 {
-    var mcpClientOptions = new MCPClientOptions();
-
-    configPath ??= Environment.GetEnvironmentVariable("MCP_PROXY_CONFIG_PATH");
-
-    if (string.IsNullOrEmpty(configPath) && environment.IsDevelopment())
+    // Create MCP-like endpoints for single server
+    // These endpoints allow direct access to a specific backend server
+    app.MapPost($"{route}/tools/list", async (HttpContext context) =>
     {
-        configPath = "mcp-proxy.json";
+        var proxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+        var result = await proxy.ListToolsAsync(context.RequestAborted).ConfigureAwait(false);
+        return Results.Json(result);
+    });
+    
+    app.MapPost($"{route}/tools/call", async (HttpContext context, ModelContextProtocol.Protocol.CallToolRequestParams request) =>
+    {
+        var proxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+        var result = await proxy.CallToolAsync(request, context.RequestAborted).ConfigureAwait(false);
+        return Results.Json(result);
+    });
+    
+    app.MapPost($"{route}/resources/list", async (HttpContext context) =>
+    {
+        var proxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+        var result = await proxy.ListResourcesAsync(context.RequestAborted).ConfigureAwait(false);
+        return Results.Json(result);
+    });
+    
+    app.MapPost($"{route}/resources/read", async (HttpContext context, ModelContextProtocol.Protocol.ReadResourceRequestParams request) =>
+    {
+        var proxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+        var result = await proxy.ReadResourceAsync(request, context.RequestAborted).ConfigureAwait(false);
+        return Results.Json(result);
+    });
+    
+    app.MapPost($"{route}/prompts/list", async (HttpContext context) =>
+    {
+        var proxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+        var result = await proxy.ListPromptsAsync(context.RequestAborted).ConfigureAwait(false);
+        return Results.Json(result);
+    });
+    
+    app.MapPost($"{route}/prompts/get", async (HttpContext context, ModelContextProtocol.Protocol.GetPromptRequestParams request) =>
+    {
+        var proxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+        var result = await proxy.GetPromptAsync(request, context.RequestAborted).ConfigureAwait(false);
+        return Results.Json(result);
+    });
+}
+
+void ConfigureSingleServerHookPipeline(
+    string serverName,
+    ServerConfiguration serverConfig,
+    SingleServerProxy proxy,
+    HookFactory hookFactory,
+    ILogger<HookPipeline> pipelineLogger)
+{
+    // Skip if no hooks are configured
+    if (serverConfig.Hooks.PreInvoke is null or { Length: 0 } &&
+        serverConfig.Hooks.PostInvoke is null or { Length: 0 })
+    {
+        return;
     }
 
-    if (string.IsNullOrEmpty(configPath))
-    {
-        throw new InvalidOperationException("Config path not provided. Use second argument or set MCP_PROXY_CONFIG_PATH environment variable.");
-    }
-
-    var options = new JsonSerializerOptions
-    {
-        PropertyNameCaseInsensitive = true
-    };
-
-    var jsonConfig = File.ReadAllText(configPath);
-    var mcpConfig = JsonSerializer.Deserialize<McpProxyConfig>(jsonConfig, options);
-
-    mcpClientOptions.Tools = mcpConfig?.Mcp ?? [];
-
-    return await CreateMcpClients(mcpClientOptions).ConfigureAwait(false);
+    var pipeline = new HookPipeline(pipelineLogger);
+    hookFactory.ConfigurePipeline(serverConfig.Hooks, pipeline);
+    proxy.SetHookPipeline(pipeline);
 }
 
-ProxyConfig ParseArguments(string[] args)
+void ConfigureHookPipelines(
+    ProxyConfiguration configuration,
+    McpProxyServer proxyServer,
+    HookFactory hookFactory,
+    ILogger<HookPipeline> pipelineLogger)
 {
-    if (args.Length == 0 || args[0] == "--help" || args[0] == "-h")
+    foreach (var (serverName, serverConfig) in configuration.Mcp)
     {
-        PrintHelp();
-        Environment.Exit(0);
-    }
-
-    var transportType = args[0].ToLowerInvariant() switch
-    {
-        "stdio" => ServerTransportType.Stdio,
-        "sse" => ServerTransportType.Sse,
-        _ => throw new ArgumentException($"Invalid transport type: {args[0]}. Valid values are 'stdio' or 'sse'.")
-    };
-
-    var configPath = args.Length > 1 ? args[1] : null;
-
-    return new ProxyConfig
-    {
-        TransportType = transportType,
-        ConfigPath = configPath
-    };
-}
-
-void PrintHelp()
-{
-    System.Console.WriteLine("""
-        MCP Proxy - A proxy server for Model Context Protocol
-
-        Usage: McpProxy <transport> [config-path]
-
-        Arguments:
-          transport    Server transport type: 'stdio' or 'sse'
-          config-path  Path to mcp-proxy.json (optional, uses MCP_PROXY_CONFIG_PATH env var if not provided)
-
-        Environment Variables:
-          MCP_PROXY_CONFIG_PATH   Path to the mcp-proxy.json configuration file
-
-        Examples:
-          McpProxy stdio                      # Run with stdio transport
-          McpProxy sse                        # Run with SSE transport
-          McpProxy stdio ./mcp-proxy.json     # Run with stdio and specific config
-          McpProxy sse /path/to/config.json   # Run with SSE and specific config
-        """);
-}
-
-async ValueTask<CallToolResult> CallProxyTools(
-    IReadOnlyDictionary<string, McpInfo> clients,
-    RequestContext<CallToolRequestParams> context,
-    CancellationToken token)
-{
-    var clientTools = await Task.WhenAll(
-            clients.Select(async p =>
-            {
-                var tools = await p.Value.Client.ListToolsAsync().ConfigureAwait(false);
-                return (client: p.Value.Client, tools: tools);
-            }
-            )).ConfigureAwait(false);
-
-    var pair = clientTools.First(p => p.tools.Any(t => string.Equals(t.Name, context.Params!.Name, StringComparison.InvariantCultureIgnoreCase)));
-
-    var result = await pair.client.CallToolAsync(context.Params!.Name, context.Params.Arguments!.ToDictionary(p => p.Key, p => (object?)p.Value), cancellationToken: token).ConfigureAwait(false);
-    return result;
-}
-
-async ValueTask<ListToolsResult> ListProxyTools(
-    IReadOnlyDictionary<string, McpInfo> clients,
-    RequestContext<ListToolsRequestParams> context,
-    CancellationToken token)
-{
-    var clientTools = await Task.WhenAll(clients.Select(p => p.Value.Client.ListToolsAsync().AsTask())).ConfigureAwait(false);
-    var tools = clientTools.SelectMany(t => t.Select(tool => new Tool
-    {
-        Name = tool.Name,
-        Title = tool.Title,
-        Description = tool.Description,
-        InputSchema = tool.JsonSchema,
-        OutputSchema = tool.ReturnJsonSchema,
-    })).ToArray();
-
-    var result = new ListToolsResult
-    {
-        Tools = tools,
-    };
-
-    return result;
-}
-
-async Task<IReadOnlyDictionary<string, McpInfo>> CreateMcpClients(MCPClientOptions options)
-{
-    var map = new Dictionary<string, McpInfo>();
-
-    foreach (var mcp in options.Tools)
-    {
-        if (string.Equals(mcp.Value.Type, "stdio", StringComparison.InvariantCultureIgnoreCase))
+        // Skip if no hooks are configured
+        if (serverConfig.Hooks.PreInvoke is null or { Length: 0 } &&
+            serverConfig.Hooks.PostInvoke is null or { Length: 0 })
         {
-            var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
-            {
-                Name = mcp.Key,
-                Command = mcp.Value.Command!,
-                Arguments = mcp.Value.Arguments,
-            });
-
-            var client = await McpClient.CreateAsync(clientTransport).ConfigureAwait(false);
-            map.Add(mcp.Key, new McpInfo(mcp.Value, client));
+            continue;
         }
-        else if (string.Equals(mcp.Value.Type, "http", StringComparison.InvariantCultureIgnoreCase) || string.Equals(mcp.Value.Type, "sse", StringComparison.InvariantCultureIgnoreCase))
-        {
-            // Use SSE mode for "sse" type, AutoDetect (which tries StreamableHttp first) for "http"
-            var transportMode = string.Equals(mcp.Value.Type, "sse", StringComparison.InvariantCultureIgnoreCase)
-                ? HttpTransportMode.Sse
-                : HttpTransportMode.AutoDetect;
 
-            var clientTransport = new HttpClientTransport(new HttpClientTransportOptions
-            {
-                Endpoint = new Uri(mcp.Value.Url!),
-                Name = mcp.Key,
-                TransportMode = transportMode,
-            });
-
-            var client = await McpClient.CreateAsync(clientTransport).ConfigureAwait(false);
-            map.Add(mcp.Key, new McpInfo(mcp.Value, client));
-        }
-        else
-        {
-            throw new NotSupportedException($"Unsupported MCP type: {mcp.Value.Type}");
-        }
+        var pipeline = new HookPipeline(pipelineLogger);
+        hookFactory.ConfigurePipeline(serverConfig.Hooks, pipeline);
+        proxyServer.AddHookPipeline(serverName, pipeline);
     }
-
-    return map;
 }
 
-enum ServerTransportType
+void ConfigureLogging(IServiceCollection services, bool verbose)
 {
+    services.AddLogging(logging =>
+    {
+        logging.ClearProviders();
+        logging.AddConsole();
+        logging.SetMinimumLevel(verbose ? LogLevel.Debug : LogLevel.Information);
+    });
+}
+
+/// <summary>
+/// Transport type for the proxy server.
+/// </summary>
+enum TransportType
+{
+    /// <summary>
+    /// Standard input/output transport.
+    /// </summary>
     Stdio,
-    Sse
-}
 
-class ProxyConfig
-{
-    public ServerTransportType TransportType { get; set; } = ServerTransportType.Stdio;
-    public string? ConfigPath { get; set; }
+    /// <summary>
+    /// HTTP/SSE transport.
+    /// </summary>
+    Http,
+
+    /// <summary>
+    /// Server-Sent Events transport (alias for Http).
+    /// </summary>
+    Sse
 }

@@ -7,9 +7,17 @@
   <Folder Name="/Solution Items/">
     <File Path="appsettings.json" />
     <File Path="mcp-proxy.json" />
+    <File Path="README.md" />
+    <File Path="requirements.md" />
+    <File Path="Directory.Packages.props" />
   </Folder>
-  <Folder Name="/src/" />
-  <Folder Name="/src/McpProxy.console/">
+  <Folder Name="/src/">
+    <Project Path="src/McpProxy.Abstractions/McpProxy.Abstractions.csproj" />
+    <Project Path="src/McpProxy.Core/McpProxy.Core.csproj" />
     <Project Path="src/McpProxy/McpProxy.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/McpProxy.Tests.Unit/McpProxy.Tests.Unit.csproj" />
+    <Project Path="tests/McpProxy.Tests.E2E/McpProxy.Tests.E2E.csproj" />
   </Folder>
 </Solution>

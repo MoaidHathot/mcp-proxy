@@ -33,7 +33,12 @@
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="System.CommandLine" />
     <PackageReference Include="Dumpify" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\McpProxy.Core\McpProxy.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

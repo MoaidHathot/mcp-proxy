@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsAspNetCoreApp>true</IsAspNetCoreApp>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>McpProxy.Abstractions</RootNamespace>
+
+    <!-- NuGet Package Configuration -->
+    <IsPackable>true</IsPackable>
+    <PackageId>McpProxy.Abstractions</PackageId>
+    <Version>1.0.0</Version>
+    <Description>Abstractions and interfaces for extending MCP Proxy with custom hooks, filters, and authentication handlers.</Description>
+    <PackageTags>mcp;model-context-protocol;proxy;abstractions;extensibility</PackageTags>
+    <PackageProjectUrl>https://github.com/MoaidHathot/mcp-proxy</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MoaidHathot/mcp-proxy</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Copyright>Copyright (c) 2025 Moaid Hathot</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>
