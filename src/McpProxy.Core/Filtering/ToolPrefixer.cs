@@ -65,6 +65,16 @@ public sealed class ToolPrefixer : IToolTransformer
         var expectedPrefix = $"{_prefix}{_separator}";
         return toolName.StartsWith(expectedPrefix, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Adds the prefix to a tool name.
+    /// </summary>
+    /// <param name="toolName">The original tool name.</param>
+    /// <returns>The prefixed tool name.</returns>
+    public string AddPrefix(string toolName)
+    {
+        return $"{_prefix}{_separator}{toolName}";
+    }
 }
 
 /// <summary>

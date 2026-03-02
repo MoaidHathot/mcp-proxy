@@ -80,6 +80,16 @@ public sealed class ServerConfiguration
     public ToolsConfiguration Tools { get; set; } = new();
 
     /// <summary>
+    /// Gets or sets the resources configuration for this server.
+    /// </summary>
+    public ResourcesConfiguration Resources { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the prompts configuration for this server.
+    /// </summary>
+    public PromptsConfiguration Prompts { get; set; } = new();
+
+    /// <summary>
     /// Gets or sets the hooks configuration for this server.
     /// </summary>
     public HooksConfiguration Hooks { get; set; } = new();
@@ -112,6 +122,48 @@ public sealed class ToolsConfiguration
 }
 
 /// <summary>
+/// Resources filtering and transformation configuration.
+/// </summary>
+public sealed class ResourcesConfiguration
+{
+    /// <summary>
+    /// Gets or sets the prefix to add to all resource URIs from this server.
+    /// </summary>
+    public string? Prefix { get; set; }
+
+    /// <summary>
+    /// Gets or sets the separator between prefix and resource URI.
+    /// </summary>
+    public string PrefixSeparator { get; set; } = "://";
+
+    /// <summary>
+    /// Gets or sets the filter configuration.
+    /// </summary>
+    public FilterConfiguration Filter { get; set; } = new();
+}
+
+/// <summary>
+/// Prompts filtering and transformation configuration.
+/// </summary>
+public sealed class PromptsConfiguration
+{
+    /// <summary>
+    /// Gets or sets the prefix to add to all prompt names from this server.
+    /// </summary>
+    public string? Prefix { get; set; }
+
+    /// <summary>
+    /// Gets or sets the separator between prefix and prompt name.
+    /// </summary>
+    public string PrefixSeparator { get; set; } = "_";
+
+    /// <summary>
+    /// Gets or sets the filter configuration.
+    /// </summary>
+    public FilterConfiguration Filter { get; set; } = new();
+}
+
+/// <summary>
 /// Filter mode for tools.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter<FilterMode>))]
@@ -123,14 +175,14 @@ public enum FilterMode
     None,
 
     /// <summary>
-    /// Whitelist mode - only include tools matching patterns.
+    /// AllowList mode - only include tools matching patterns.
     /// </summary>
-    Whitelist,
+    AllowList,
 
     /// <summary>
-    /// Blacklist mode - exclude tools matching patterns.
+    /// DenyList mode - exclude tools matching patterns.
     /// </summary>
-    Blacklist,
+    DenyList,
 
     /// <summary>
     /// Regex mode - include/exclude based on regex patterns.
@@ -150,8 +202,8 @@ public sealed class FilterConfiguration
 
     /// <summary>
     /// Gets or sets the patterns for filtering. Interpretation depends on mode:
-    /// - Whitelist: Tool names or wildcard patterns to include
-    /// - Blacklist: Tool names or wildcard patterns to exclude
+    /// - AllowList: Tool names or wildcard patterns to include
+    /// - DenyList: Tool names or wildcard patterns to exclude
     /// - Regex: Regex patterns (first pattern is include, optional second is exclude)
     /// </summary>
     public string[]? Patterns { get; set; }

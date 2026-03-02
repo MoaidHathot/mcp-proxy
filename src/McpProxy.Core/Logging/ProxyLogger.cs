@@ -99,6 +99,12 @@ public static partial class ProxyLogger
     [LoggerMessage(Level = LogLevel.Debug, Message = "Filtered {FilteredCount} tools from server '{ServerName}' (mode: {FilterMode})")]
     public static partial void ToolsFiltered(ILogger logger, int filteredCount, string serverName, string filterMode);
 
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Filtered {FilteredCount} resources from server '{ServerName}'")]
+    public static partial void ResourcesFiltered(ILogger logger, int filteredCount, string serverName);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Filtered {FilteredCount} prompts from server '{ServerName}'")]
+    public static partial void PromptsFiltered(ILogger logger, int filteredCount, string serverName);
+
     [LoggerMessage(Level = LogLevel.Debug, Message = "Tool '{ToolName}' prefixed to '{PrefixedName}'")]
     public static partial void ToolPrefixed(ILogger logger, string toolName, string prefixedName);
 
@@ -123,6 +129,12 @@ public static partial class ProxyLogger
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Client handlers configured for sampling, elicitation, and roots")]
     public static partial void ClientHandlersConfigured(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Configured {Count} experimental capabilities for client")]
+    public static partial void ExperimentalCapabilitiesConfigured(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Configured {Count} experimental capabilities for server")]
+    public static partial void ServerExperimentalCapabilitiesConfigured(ILogger logger, int count);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Registered endpoint for server '{ServerName}' at route '{Route}'")]
     public static partial void RegisteredServerEndpoint(ILogger logger, string serverName, string route);
@@ -179,4 +191,93 @@ public static partial class ProxyLogger
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Roots request failed")]
     public static partial void RootsFailed(ILogger logger, Exception exception);
+
+    // === Cache Operations ===
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Tool cache hit for '{ToolName}' from server '{ServerName}'")]
+    public static partial void ToolCacheHit(ILogger logger, string toolName, string serverName);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Tool cache miss for '{ToolName}'")]
+    public static partial void ToolCacheMiss(ILogger logger, string toolName);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cached {ToolCount} tools for server '{ServerName}' (TTL: {TtlSeconds}s)")]
+    public static partial void ToolsCached(ILogger logger, int toolCount, string serverName, int ttlSeconds);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Invalidated tool cache for server '{ServerName}'")]
+    public static partial void ToolCacheInvalidated(ILogger logger, string serverName);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Invalidated all tool caches")]
+    public static partial void AllToolCachesInvalidated(ILogger logger);
+
+    // === Notification Forwarding ===
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Forwarding notification '{Method}' to client")]
+    public static partial void ForwardingNotification(ILogger logger, string method);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Notification '{Method}' forwarded successfully")]
+    public static partial void NotificationForwarded(ILogger logger, string method);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Notification forwarding skipped for '{Method}': {Reason}")]
+    public static partial void NotificationForwardingSkipped(ILogger logger, string method, string reason);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to forward notification '{Method}'")]
+    public static partial void NotificationForwardingFailed(ILogger logger, string method, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Received notification '{Method}' from server '{ServerName}'")]
+    public static partial void ReceivedNotification(ILogger logger, string method, string serverName);
+
+    // === Progress Notification Forwarding ===
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Forwarding progress notification (token: {ProgressToken}, progress: {Progress}, total: {Total})")]
+    public static partial void ForwardingProgressNotification(ILogger logger, string progressToken, double progress, double? total);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Progress notification forwarded (token: {ProgressToken})")]
+    public static partial void ProgressNotificationForwarded(ILogger logger, string progressToken);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Progress notification skipped (token: {ProgressToken}): {Reason}")]
+    public static partial void ProgressNotificationSkipped(ILogger logger, string progressToken, string reason);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to forward progress notification (token: {ProgressToken})")]
+    public static partial void ProgressNotificationFailed(ILogger logger, string progressToken, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Received progress notification from server '{ServerName}'")]
+    public static partial void ReceivedProgressNotification(ILogger logger, string serverName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to parse progress notification from server '{ServerName}'")]
+    public static partial void ProgressNotificationParsingFailed(ILogger logger, string serverName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Notification handlers registered for server '{ServerName}'")]
+    public static partial void NotificationHandlersRegistered(ILogger logger, string serverName);
+
+    // === Resource Subscription Operations ===
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Subscribing to resource '{ResourceUri}'")]
+    public static partial void SubscribingToResource(ILogger logger, string resourceUri);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Subscribed to resource '{ResourceUri}' on server '{ServerName}'")]
+    public static partial void SubscribedToResource(ILogger logger, string resourceUri, string serverName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Resource '{ResourceUri}' not found for subscription")]
+    public static partial void ResourceNotFoundForSubscription(ILogger logger, string resourceUri);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Backend server '{ServerName}' not found for subscription to '{ResourceUri}'")]
+    public static partial void BackendNotFoundForSubscription(ILogger logger, string serverName, string resourceUri);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to subscribe to resource '{ResourceUri}' on server '{ServerName}'")]
+    public static partial void ResourceSubscriptionFailed(ILogger logger, string resourceUri, string serverName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Unsubscribing from resource '{ResourceUri}'")]
+    public static partial void UnsubscribingFromResource(ILogger logger, string resourceUri);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Unsubscribed from resource '{ResourceUri}' on server '{ServerName}'")]
+    public static partial void UnsubscribedFromResource(ILogger logger, string resourceUri, string serverName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No subscription found to unsubscribe from resource '{ResourceUri}'")]
+    public static partial void NoSubscriptionToUnsubscribe(ILogger logger, string resourceUri);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Backend server '{ServerName}' not found for unsubscription from '{ResourceUri}'")]
+    public static partial void BackendNotFoundForUnsubscription(ILogger logger, string serverName, string resourceUri);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to unsubscribe from resource '{ResourceUri}' on server '{ServerName}'")]
+    public static partial void ResourceUnsubscriptionFailed(ILogger logger, string resourceUri, string serverName, Exception exception);
 }

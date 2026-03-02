@@ -3,6 +3,9 @@ using McpProxy.Core.Configuration;
 using McpProxy.Core.Hooks;
 using McpProxy.Core.Logging;
 using McpProxy.Core.Proxy;
+using McpProxy.Core.Telemetry;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 
 var transportOption = new Option<TransportType>("--transport", "-t")
 {
@@ -81,72 +84,13 @@ async Task RunStdioServerAsync(ProxyConfiguration configuration, bool verbose)
 {
     var builder = Host.CreateApplicationBuilder();
     ConfigureLogging(builder.Services, verbose);
+    RegisterCoreServices(builder.Services, configuration);
 
-    // Register services
-    builder.Services.AddSingleton(configuration);
-    builder.Services.AddSingleton<ProxyClientHandlers>();
-    builder.Services.AddSingleton<McpClientManager>();
-    builder.Services.AddSingleton<HookFactory>();
-    builder.Services.AddSingleton<McpProxyServer>();
-
-    // Configure MCP Server with all handlers
+    // Configure MCP Server with STDIO transport and all handlers
     builder.Services
-        .AddMcpServer()
+        .AddMcpServer(options => ConfigureServerOptions(options, configuration))
         .WithStdioServerTransport()
-        .WithListToolsHandler((context, token) =>
-        {
-            // Ensure ProxyClientHandlers has the McpServer reference
-            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
-            handlers.SetMcpServer(context.Server);
-            
-            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-            return proxy.ListToolsAsync(context, token);
-        })
-        .WithCallToolHandler((context, token) =>
-        {
-            // Ensure ProxyClientHandlers has the McpServer reference
-            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
-            handlers.SetMcpServer(context.Server);
-            
-            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-            return proxy.CallToolAsync(context, token);
-        })
-        .WithListResourcesHandler((context, token) =>
-        {
-            // Ensure ProxyClientHandlers has the McpServer reference
-            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
-            handlers.SetMcpServer(context.Server);
-            
-            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-            return proxy.ListResourcesAsync(context, token);
-        })
-        .WithReadResourceHandler((context, token) =>
-        {
-            // Ensure ProxyClientHandlers has the McpServer reference
-            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
-            handlers.SetMcpServer(context.Server);
-            
-            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-            return proxy.ReadResourceAsync(context, token);
-        })
-        .WithListPromptsHandler((context, token) =>
-        {
-            // Ensure ProxyClientHandlers has the McpServer reference
-            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
-            handlers.SetMcpServer(context.Server);
-            
-            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-            return proxy.ListPromptsAsync(context, token);
-        })
-        .WithGetPromptHandler((context, token) =>
-        {
-            // Ensure ProxyClientHandlers has the McpServer reference
-            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
-            handlers.SetMcpServer(context.Server);
-            
-            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-            return proxy.GetPromptAsync(context, token);
-        });
+        .WithProxyHandlers();
 
     var host = builder.Build();
 
@@ -177,13 +121,7 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
     var builder = WebApplication.CreateBuilder();
     builder.WebHost.UseUrls($"http://localhost:{port}");
     ConfigureLogging(builder.Services, verbose);
-
-    // Register services
-    builder.Services.AddSingleton(configuration);
-    builder.Services.AddSingleton<ProxyClientHandlers>();
-    builder.Services.AddSingleton<McpClientManager>();
-    builder.Services.AddSingleton<HookFactory>();
-    builder.Services.AddSingleton<McpProxyServer>();
+    RegisterCoreServices(builder.Services, configuration);
 
     // Register SingleServerProxy instances for PerServer mode
     if (configuration.Proxy.Routing.Mode == RoutingMode.PerServer)
@@ -199,64 +137,11 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
         }
     }
 
-    // Configure MCP Server with all handlers
+    // Configure MCP Server with HTTP transport and all handlers
     builder.Services
-        .AddMcpServer()
+        .AddMcpServer(options => ConfigureServerOptions(options, configuration))
         .WithHttpTransport()
-        .WithListToolsHandler((context, token) =>
-        {
-            // Ensure ProxyClientHandlers has the McpServer reference
-            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
-            handlers.SetMcpServer(context.Server);
-            
-            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-            return proxy.ListToolsAsync(context, token);
-        })
-        .WithCallToolHandler((context, token) =>
-        {
-            // Ensure ProxyClientHandlers has the McpServer reference
-            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
-            handlers.SetMcpServer(context.Server);
-            
-            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-            return proxy.CallToolAsync(context, token);
-        })
-        .WithListResourcesHandler((context, token) =>
-        {
-            // Ensure ProxyClientHandlers has the McpServer reference
-            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
-            handlers.SetMcpServer(context.Server);
-            
-            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-            return proxy.ListResourcesAsync(context, token);
-        })
-        .WithReadResourceHandler((context, token) =>
-        {
-            // Ensure ProxyClientHandlers has the McpServer reference
-            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
-            handlers.SetMcpServer(context.Server);
-            
-            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-            return proxy.ReadResourceAsync(context, token);
-        })
-        .WithListPromptsHandler((context, token) =>
-        {
-            // Ensure ProxyClientHandlers has the McpServer reference
-            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
-            handlers.SetMcpServer(context.Server);
-            
-            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-            return proxy.ListPromptsAsync(context, token);
-        })
-        .WithGetPromptHandler((context, token) =>
-        {
-            // Ensure ProxyClientHandlers has the McpServer reference
-            var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
-            handlers.SetMcpServer(context.Server);
-            
-            var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-            return proxy.GetPromptAsync(context, token);
-        });
+        .WithProxyHandlers();
 
     var app = builder.Build();
 
@@ -408,6 +293,49 @@ void ConfigureLogging(IServiceCollection services, bool verbose)
     });
 }
 
+void RegisterCoreServices(IServiceCollection services, ProxyConfiguration configuration)
+{
+    services.AddSingleton(configuration);
+    services.AddSingleton<ProxyClientHandlers>();
+    services.AddSingleton<NotificationForwarder>();
+    services.AddSingleton<McpClientManager>(sp =>
+    {
+        var logger = sp.GetRequiredService<ILogger<McpClientManager>>();
+        var proxyClientHandlers = sp.GetRequiredService<ProxyClientHandlers>();
+        var notificationForwarder = sp.GetRequiredService<NotificationForwarder>();
+        return new McpClientManager(logger, proxyClientHandlers, notificationForwarder);
+    });
+    services.AddSingleton<HookFactory>();
+    services.AddSingleton<McpProxyServer>();
+    
+    // Add telemetry services
+    services.AddProxyTelemetry(configuration);
+}
+
+void ConfigureServerOptions(McpServerOptions options, ProxyConfiguration configuration)
+{
+    // Configure server info
+    var serverInfo = configuration.Proxy.ServerInfo;
+    options.ServerInfo = new Implementation
+    {
+        Name = serverInfo.Name,
+        Version = serverInfo.Version
+    };
+
+    if (!string.IsNullOrEmpty(serverInfo.Instructions))
+    {
+        options.ServerInstructions = serverInfo.Instructions;
+    }
+
+    // Configure server experimental capabilities
+    var serverCapabilities = configuration.Proxy.Capabilities.Server;
+    if (serverCapabilities.Experimental is { Count: > 0 })
+    {
+        options.Capabilities ??= new ServerCapabilities();
+        options.Capabilities.Experimental = serverCapabilities.Experimental;
+    }
+}
+
 /// <summary>
 /// Transport type for the proxy server.
 /// </summary>
@@ -427,4 +355,81 @@ enum TransportType
     /// Server-Sent Events transport (alias for Http).
     /// </summary>
     Sse
+}
+
+/// <summary>
+/// Extension methods for configuring MCP proxy handlers.
+/// </summary>
+static class McpProxyBuilderExtensions
+{
+    /// <summary>
+    /// Registers all MCP protocol handlers (Tools, Resources, Prompts, Subscriptions) that delegate to the proxy server.
+    /// </summary>
+    /// <param name="builder">The MCP server builder.</param>
+    /// <returns>The builder for chaining.</returns>
+    public static IMcpServerBuilder WithProxyHandlers(this IMcpServerBuilder builder)
+    {
+        return builder
+            .WithListToolsHandler((context, token) =>
+            {
+                EnsureProxyClientHandlersInitialized(context);
+                var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+                return proxy.ListToolsAsync(context, token);
+            })
+            .WithCallToolHandler((context, token) =>
+            {
+                EnsureProxyClientHandlersInitialized(context);
+                var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+                return proxy.CallToolAsync(context, token);
+            })
+            .WithListResourcesHandler((context, token) =>
+            {
+                EnsureProxyClientHandlersInitialized(context);
+                var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+                return proxy.ListResourcesAsync(context, token);
+            })
+            .WithReadResourceHandler((context, token) =>
+            {
+                EnsureProxyClientHandlersInitialized(context);
+                var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+                return proxy.ReadResourceAsync(context, token);
+            })
+            .WithListPromptsHandler((context, token) =>
+            {
+                EnsureProxyClientHandlersInitialized(context);
+                var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+                return proxy.ListPromptsAsync(context, token);
+            })
+            .WithGetPromptHandler((context, token) =>
+            {
+                EnsureProxyClientHandlersInitialized(context);
+                var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+                return proxy.GetPromptAsync(context, token);
+            })
+            .WithSubscribeToResourcesHandler((context, token) =>
+            {
+                EnsureProxyClientHandlersInitialized(context);
+                var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+                return proxy.SubscribeToResourceAsync(context, token);
+            })
+            .WithUnsubscribeFromResourcesHandler((context, token) =>
+            {
+                EnsureProxyClientHandlersInitialized(context);
+                var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
+                return proxy.UnsubscribeFromResourceAsync(context, token);
+            });
+    }
+
+    /// <summary>
+    /// Ensures the ProxyClientHandlers and NotificationForwarder have the McpServer reference set.
+    /// This enables backend servers to forward sampling/elicitation/roots requests and notifications to the connected client.
+    /// </summary>
+    private static void EnsureProxyClientHandlersInitialized<TParams>(RequestContext<TParams> context) where TParams : class
+    {
+        var handlers = context.Server!.Services!.GetRequiredService<ProxyClientHandlers>();
+        handlers.SetMcpServer(context.Server);
+
+        var notificationForwarder = context.Server!.Services!.GetRequiredService<NotificationForwarder>();
+        notificationForwarder.SetMcpServer(context.Server);
+    }
 }

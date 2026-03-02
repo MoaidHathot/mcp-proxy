@@ -236,7 +236,7 @@ public class ConfigurationLoaderTests
                             "command": "node",
                             "tools": {
                                 "filter": {
-                                    "mode": "whitelist",
+                                    "mode": "allowlist",
                                     "patterns": ["allowed_*", "public_*"]
                                 }
                             }
@@ -249,7 +249,7 @@ public class ConfigurationLoaderTests
             var config = ConfigurationLoader.LoadFromString(configWithFilters);
 
             // Assert
-            config.Mcp["test-server"].Tools.Filter.Mode.Should().Be(FilterMode.Whitelist);
+            config.Mcp["test-server"].Tools.Filter.Mode.Should().Be(FilterMode.AllowList);
             config.Mcp["test-server"].Tools.Filter.Patterns.Should().Contain("allowed_*");
             config.Mcp["test-server"].Tools.Filter.Patterns.Should().Contain("public_*");
         }
@@ -515,6 +515,222 @@ public class ConfigurationLoaderTests
             result.Proxy.Authentication.Type.Should().Be(AuthenticationType.ApiKey);
             result.Proxy.Authentication.ApiKey.Header.Should().Be("X-API-Key");
             result.Proxy.Authentication.ApiKey.Value.Should().Be("secret123");
+        }
+    }
+
+    public class CapabilityConfigTests
+    {
+        [Fact]
+        public void LoadFromString_DefaultCapabilities_AllEnabled()
+        {
+            // Arrange
+            var config = """
+                {
+                    "mcp": {}
+                }
+                """;
+
+            // Act
+            var result = ConfigurationLoader.LoadFromString(config);
+
+            // Assert
+            result.Proxy.Capabilities.Client.Sampling.Should().BeTrue();
+            result.Proxy.Capabilities.Client.Elicitation.Should().BeTrue();
+            result.Proxy.Capabilities.Client.Roots.Should().BeTrue();
+        }
+
+        [Fact]
+        public void LoadFromString_DisabledSamplingCapability_LoadsCorrectly()
+        {
+            // Arrange
+            var config = """
+                {
+                    "proxy": {
+                        "capabilities": {
+                            "client": {
+                                "sampling": false
+                            }
+                        }
+                    },
+                    "mcp": {}
+                }
+                """;
+
+            // Act
+            var result = ConfigurationLoader.LoadFromString(config);
+
+            // Assert
+            result.Proxy.Capabilities.Client.Sampling.Should().BeFalse();
+            result.Proxy.Capabilities.Client.Elicitation.Should().BeTrue();
+            result.Proxy.Capabilities.Client.Roots.Should().BeTrue();
+        }
+
+        [Fact]
+        public void LoadFromString_DisabledElicitationCapability_LoadsCorrectly()
+        {
+            // Arrange
+            var config = """
+                {
+                    "proxy": {
+                        "capabilities": {
+                            "client": {
+                                "elicitation": false
+                            }
+                        }
+                    },
+                    "mcp": {}
+                }
+                """;
+
+            // Act
+            var result = ConfigurationLoader.LoadFromString(config);
+
+            // Assert
+            result.Proxy.Capabilities.Client.Sampling.Should().BeTrue();
+            result.Proxy.Capabilities.Client.Elicitation.Should().BeFalse();
+            result.Proxy.Capabilities.Client.Roots.Should().BeTrue();
+        }
+
+        [Fact]
+        public void LoadFromString_DisabledRootsCapability_LoadsCorrectly()
+        {
+            // Arrange
+            var config = """
+                {
+                    "proxy": {
+                        "capabilities": {
+                            "client": {
+                                "roots": false
+                            }
+                        }
+                    },
+                    "mcp": {}
+                }
+                """;
+
+            // Act
+            var result = ConfigurationLoader.LoadFromString(config);
+
+            // Assert
+            result.Proxy.Capabilities.Client.Sampling.Should().BeTrue();
+            result.Proxy.Capabilities.Client.Elicitation.Should().BeTrue();
+            result.Proxy.Capabilities.Client.Roots.Should().BeFalse();
+        }
+
+        [Fact]
+        public void LoadFromString_AllCapabilitiesDisabled_LoadsCorrectly()
+        {
+            // Arrange
+            var config = """
+                {
+                    "proxy": {
+                        "capabilities": {
+                            "client": {
+                                "sampling": false,
+                                "elicitation": false,
+                                "roots": false
+                            }
+                        }
+                    },
+                    "mcp": {}
+                }
+                """;
+
+            // Act
+            var result = ConfigurationLoader.LoadFromString(config);
+
+            // Assert
+            result.Proxy.Capabilities.Client.Sampling.Should().BeFalse();
+            result.Proxy.Capabilities.Client.Elicitation.Should().BeFalse();
+            result.Proxy.Capabilities.Client.Roots.Should().BeFalse();
+        }
+
+        [Fact]
+        public void LoadFromString_ClientExperimentalCapabilities_LoadsCorrectly()
+        {
+            // Arrange
+            var config = """
+                {
+                    "proxy": {
+                        "capabilities": {
+                            "client": {
+                                "experimental": {
+                                    "customFeature": { "enabled": true, "version": "1.0" }
+                                }
+                            }
+                        }
+                    },
+                    "mcp": {}
+                }
+                """;
+
+            // Act
+            var result = ConfigurationLoader.LoadFromString(config);
+
+            // Assert
+            result.Proxy.Capabilities.Client.Experimental.Should().NotBeNull();
+            result.Proxy.Capabilities.Client.Experimental.Should().ContainKey("customFeature");
+        }
+
+        [Fact]
+        public void LoadFromString_ServerExperimentalCapabilities_LoadsCorrectly()
+        {
+            // Arrange
+            var config = """
+                {
+                    "proxy": {
+                        "capabilities": {
+                            "server": {
+                                "experimental": {
+                                    "proxyFeature": { "supported": true }
+                                }
+                            }
+                        }
+                    },
+                    "mcp": {}
+                }
+                """;
+
+            // Act
+            var result = ConfigurationLoader.LoadFromString(config);
+
+            // Assert
+            result.Proxy.Capabilities.Server.Experimental.Should().NotBeNull();
+            result.Proxy.Capabilities.Server.Experimental.Should().ContainKey("proxyFeature");
+        }
+
+        [Fact]
+        public void LoadFromString_BothClientAndServerCapabilities_LoadsCorrectly()
+        {
+            // Arrange
+            var config = """
+                {
+                    "proxy": {
+                        "capabilities": {
+                            "client": {
+                                "sampling": true,
+                                "experimental": {
+                                    "clientFeature": {}
+                                }
+                            },
+                            "server": {
+                                "experimental": {
+                                    "serverFeature": {}
+                                }
+                            }
+                        }
+                    },
+                    "mcp": {}
+                }
+                """;
+
+            // Act
+            var result = ConfigurationLoader.LoadFromString(config);
+
+            // Assert
+            result.Proxy.Capabilities.Client.Sampling.Should().BeTrue();
+            result.Proxy.Capabilities.Client.Experimental.Should().ContainKey("clientFeature");
+            result.Proxy.Capabilities.Server.Experimental.Should().ContainKey("serverFeature");
         }
     }
 }

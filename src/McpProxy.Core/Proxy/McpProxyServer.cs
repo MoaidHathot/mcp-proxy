@@ -1,4 +1,5 @@
 using McpProxy.Abstractions;
+using McpProxy.Core.Caching;
 using McpProxy.Core.Configuration;
 using McpProxy.Core.Filtering;
 using McpProxy.Core.Hooks;
@@ -46,6 +47,11 @@ public sealed class ResourceInfo
     public required Resource Resource { get; init; }
 
     /// <summary>
+    /// Gets the original (unprefixed) resource URI.
+    /// </summary>
+    public required string OriginalUri { get; init; }
+
+    /// <summary>
     /// Gets the name of the server providing this resource.
     /// </summary>
     public required string ServerName { get; init; }
@@ -67,6 +73,11 @@ public sealed class PromptInfo
     public required Prompt Prompt { get; init; }
 
     /// <summary>
+    /// Gets the original (unprefixed) prompt name.
+    /// </summary>
+    public required string OriginalName { get; init; }
+
+    /// <summary>
     /// Gets the name of the server providing this prompt.
     /// </summary>
     public required string ServerName { get; init; }
@@ -85,10 +96,18 @@ public sealed class McpProxyServer
     private readonly ILogger<McpProxyServer> _logger;
     private readonly McpClientManager _clientManager;
     private readonly ProxyConfiguration _configuration;
+    private readonly IToolCache _toolCache;
+    private readonly int _cacheTtlSeconds;
     private readonly Dictionary<string, HookPipeline> _hookPipelines = [];
-    private readonly Dictionary<string, IToolFilter> _filters = [];
+    private readonly Dictionary<string, IToolFilter> _toolFilters = [];
+    private readonly Dictionary<string, IResourceFilter> _resourceFilters = [];
+    private readonly Dictionary<string, IPromptFilter> _promptFilters = [];
     private readonly Dictionary<string, IToolTransformer> _transformers = [];
+    private readonly Dictionary<string, IResourceTransformer> _resourceTransformers = [];
+    private readonly Dictionary<string, IPromptTransformer> _promptTransformers = [];
     private readonly Dictionary<string, ToolPrefixer?> _prefixers = [];
+    private readonly Dictionary<string, ResourcePrefixer?> _resourcePrefixers = [];
+    private readonly Dictionary<string, PromptPrefixer?> _promptPrefixers = [];
 
     /// <summary>
     /// Initializes a new instance of <see cref="McpProxyServer"/>.
@@ -97,10 +116,28 @@ public sealed class McpProxyServer
         ILogger<McpProxyServer> logger,
         McpClientManager clientManager,
         ProxyConfiguration configuration)
+        : this(logger, clientManager, configuration, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of <see cref="McpProxyServer"/> with a custom tool cache.
+    /// </summary>
+    public McpProxyServer(
+        ILogger<McpProxyServer> logger,
+        McpClientManager clientManager,
+        ProxyConfiguration configuration,
+        IToolCache? toolCache)
     {
         _logger = logger;
         _clientManager = clientManager;
         _configuration = configuration;
+
+        var cacheConfig = configuration.Proxy.Caching.Tools;
+        _cacheTtlSeconds = cacheConfig.TtlSeconds;
+        _toolCache = toolCache ?? (cacheConfig.Enabled
+            ? new ToolCache(cacheConfig.TtlSeconds)
+            : NullToolCache.Instance);
 
         InitializeFiltersAndTransformers();
     }
@@ -109,12 +146,24 @@ public sealed class McpProxyServer
     {
         foreach (var (name, serverConfig) in _configuration.Mcp)
         {
-            _filters[name] = FilterFactory.Create(serverConfig.Tools.Filter);
+            _toolFilters[name] = FilterFactory.Create(serverConfig.Tools.Filter);
+            _resourceFilters[name] = ResourceFilterFactory.Create(serverConfig.Resources.Filter);
+            _promptFilters[name] = PromptFilterFactory.Create(serverConfig.Prompts.Filter);
             _transformers[name] = TransformerFactory.Create(serverConfig.Tools);
+            _resourceTransformers[name] = ResourceTransformerFactory.Create(serverConfig.Resources);
+            _promptTransformers[name] = PromptTransformerFactory.Create(serverConfig.Prompts);
 
             // Store prefixer separately for reverse lookup
             _prefixers[name] = !string.IsNullOrEmpty(serverConfig.Tools.Prefix)
                 ? new ToolPrefixer(serverConfig.Tools.Prefix, serverConfig.Tools.PrefixSeparator)
+                : null;
+
+            _resourcePrefixers[name] = !string.IsNullOrEmpty(serverConfig.Resources.Prefix)
+                ? new ResourcePrefixer(serverConfig.Resources.Prefix, serverConfig.Resources.PrefixSeparator)
+                : null;
+
+            _promptPrefixers[name] = !string.IsNullOrEmpty(serverConfig.Prompts.Prefix)
+                ? new PromptPrefixer(serverConfig.Prompts.Prefix, serverConfig.Prompts.PrefixSeparator)
                 : null;
         }
     }
@@ -164,7 +213,11 @@ public sealed class McpProxyServer
             try
             {
                 var tools = await clientInfo.Client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-                var filter = _filters.GetValueOrDefault(name, NoFilter.Instance);
+
+                // Cache the raw tools from the server
+                CacheToolsForServer(name, tools);
+
+                var filter = _toolFilters.GetValueOrDefault(name, NoFilter.Instance);
                 var transformer = _transformers.GetValueOrDefault(name, NoTransform.Instance);
 
                 var filteredCount = 0;
@@ -296,7 +349,27 @@ public sealed class McpProxyServer
             try
             {
                 var resources = await clientInfo.Client.ListResourcesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-                allResources.AddRange(resources);
+                var filter = _resourceFilters.GetValueOrDefault(name, NoResourceFilter.Instance);
+                var transformer = _resourceTransformers.GetValueOrDefault(name, NoResourceTransform.Instance);
+
+                var filteredCount = 0;
+                foreach (var resource in resources)
+                {
+                    if (filter.ShouldInclude(resource, name))
+                    {
+                        var transformed = transformer.Transform(resource, name);
+                        allResources.Add(transformed);
+                    }
+                    else
+                    {
+                        filteredCount++;
+                    }
+                }
+
+                if (filteredCount > 0)
+                {
+                    ProxyLogger.ResourcesFiltered(_logger, filteredCount, name);
+                }
             }
             catch (Exception ex)
             {
@@ -330,9 +403,9 @@ public sealed class McpProxyServer
             };
         }
 
-        ProxyLogger.ReadingResource(_logger, uri, resourceInfo.ServerName);
+        ProxyLogger.ReadingResource(_logger, resourceInfo.OriginalUri, resourceInfo.ServerName);
 
-        var result = await resourceInfo.ClientInfo.Client.ReadResourceAsync(uri, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var result = await resourceInfo.ClientInfo.Client.ReadResourceAsync(resourceInfo.OriginalUri, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return new ReadResourceResult { Contents = [.. result.Contents] };
     }
@@ -353,7 +426,27 @@ public sealed class McpProxyServer
             try
             {
                 var prompts = await clientInfo.Client.ListPromptsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-                allPrompts.AddRange(prompts);
+                var filter = _promptFilters.GetValueOrDefault(name, NoPromptFilter.Instance);
+                var transformer = _promptTransformers.GetValueOrDefault(name, NoPromptTransform.Instance);
+
+                var filteredCount = 0;
+                foreach (var prompt in prompts)
+                {
+                    if (filter.ShouldInclude(prompt, name))
+                    {
+                        var transformed = transformer.Transform(prompt, name);
+                        allPrompts.Add(transformed);
+                    }
+                    else
+                    {
+                        filteredCount++;
+                    }
+                }
+
+                if (filteredCount > 0)
+                {
+                    ProxyLogger.PromptsFiltered(_logger, filteredCount, name);
+                }
             }
             catch (Exception ex)
             {
@@ -386,10 +479,10 @@ public sealed class McpProxyServer
             };
         }
 
-        ProxyLogger.GettingPrompt(_logger, promptName, promptInfo.ServerName);
+        ProxyLogger.GettingPrompt(_logger, promptInfo.OriginalName, promptInfo.ServerName);
 
         var arguments = context.Params.Arguments?.ToDictionary(p => p.Key, p => (object?)p.Value);
-        var result = await promptInfo.ClientInfo.Client.GetPromptAsync(promptName, arguments, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var result = await promptInfo.ClientInfo.Client.GetPromptAsync(promptInfo.OriginalName, arguments, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return new GetPromptResult
         {
@@ -411,6 +504,28 @@ public sealed class McpProxyServer
     /// </summary>
     private async Task<ToolInfo?> FindToolAsync(string toolName, CancellationToken cancellationToken)
     {
+        // Try cache first
+        var cachedTool = _toolCache.GetTool(toolName);
+        if (cachedTool is not null)
+        {
+            ProxyLogger.ToolCacheHit(_logger, toolName, cachedTool.ServerName);
+
+            // We have cached tool info, but we need to get the client info
+            if (_clientManager.Clients.TryGetValue(cachedTool.ServerName, out var cachedClientInfo))
+            {
+                return new ToolInfo
+                {
+                    Tool = cachedTool.Tool,
+                    OriginalName = cachedTool.OriginalName,
+                    ServerName = cachedTool.ServerName,
+                    ClientInfo = cachedClientInfo
+                };
+            }
+        }
+
+        ProxyLogger.ToolCacheMiss(_logger, toolName);
+
+        // Cache miss - search all servers and update cache
         foreach (var (serverName, clientInfo) in _clientManager.Clients)
         {
             var prefixer = _prefixers.GetValueOrDefault(serverName);
@@ -427,7 +542,21 @@ public sealed class McpProxyServer
 
             try
             {
-                var tools = await clientInfo.Client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                // Check if we have valid cache for this server
+                var cachedTools = _toolCache.GetToolsForServer(serverName);
+                IList<Tool> tools;
+
+                if (cachedTools is not null)
+                {
+                    tools = cachedTools;
+                }
+                else
+                {
+                    // Fetch from backend and cache
+                    tools = await clientInfo.Client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                    CacheToolsForServer(serverName, tools);
+                }
+
                 var tool = tools.FirstOrDefault(t => string.Equals(t.Name, originalName, StringComparison.OrdinalIgnoreCase));
 
                 if (tool is not null)
@@ -451,22 +580,75 @@ public sealed class McpProxyServer
     }
 
     /// <summary>
+    /// Caches tools for a server with prefixed name mappings.
+    /// </summary>
+    private void CacheToolsForServer(string serverName, IList<Tool> tools)
+    {
+        var prefixer = _prefixers.GetValueOrDefault(serverName);
+        Dictionary<string, string>? prefixedNames = null;
+
+        if (prefixer is not null)
+        {
+            prefixedNames = [];
+            foreach (var tool in tools)
+            {
+                var prefixedName = prefixer.AddPrefix(tool.Name);
+                prefixedNames[prefixedName] = tool.Name;
+            }
+        }
+
+        _toolCache.SetToolsForServer(serverName, tools, prefixedNames);
+        ProxyLogger.ToolsCached(_logger, tools.Count, serverName, _cacheTtlSeconds);
+    }
+
+    /// <summary>
+    /// Invalidates the tool cache for a specific server.
+    /// </summary>
+    public void InvalidateToolCache(string serverName)
+    {
+        _toolCache.InvalidateServer(serverName);
+        ProxyLogger.ToolCacheInvalidated(_logger, serverName);
+    }
+
+    /// <summary>
+    /// Invalidates all tool caches.
+    /// </summary>
+    public void InvalidateAllToolCaches()
+    {
+        _toolCache.InvalidateAll();
+        ProxyLogger.AllToolCachesInvalidated(_logger);
+    }
+
+    /// <summary>
     /// Finds a resource by URI across all backend servers.
     /// </summary>
     private async Task<ResourceInfo?> FindResourceAsync(string uri, CancellationToken cancellationToken)
     {
         foreach (var (serverName, clientInfo) in _clientManager.Clients)
         {
+            var prefixer = _resourcePrefixers.GetValueOrDefault(serverName);
+            string originalUri;
+
+            if (prefixer is not null && prefixer.HasPrefix(uri))
+            {
+                originalUri = prefixer.RemovePrefix(uri);
+            }
+            else
+            {
+                originalUri = uri;
+            }
+
             try
             {
                 var resources = await clientInfo.Client.ListResourcesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-                var resource = resources.FirstOrDefault(r => string.Equals(r.Uri, uri, StringComparison.OrdinalIgnoreCase));
+                var resource = resources.FirstOrDefault(r => string.Equals(r.Uri, originalUri, StringComparison.OrdinalIgnoreCase));
 
                 if (resource is not null)
                 {
                     return new ResourceInfo
                     {
                         Resource = resource,
+                        OriginalUri = originalUri,
                         ServerName = serverName,
                         ClientInfo = clientInfo
                     };
@@ -488,16 +670,29 @@ public sealed class McpProxyServer
     {
         foreach (var (serverName, clientInfo) in _clientManager.Clients)
         {
+            var prefixer = _promptPrefixers.GetValueOrDefault(serverName);
+            string originalName;
+
+            if (prefixer is not null && prefixer.HasPrefix(promptName))
+            {
+                originalName = prefixer.RemovePrefix(promptName);
+            }
+            else
+            {
+                originalName = promptName;
+            }
+
             try
             {
                 var prompts = await clientInfo.Client.ListPromptsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-                var prompt = prompts.FirstOrDefault(p => string.Equals(p.Name, promptName, StringComparison.OrdinalIgnoreCase));
+                var prompt = prompts.FirstOrDefault(p => string.Equals(p.Name, originalName, StringComparison.OrdinalIgnoreCase));
 
                 if (prompt is not null)
                 {
                     return new PromptInfo
                     {
                         Prompt = prompt,
+                        OriginalName = originalName,
                         ServerName = serverName,
                         ClientInfo = clientInfo
                     };
@@ -510,5 +705,103 @@ public sealed class McpProxyServer
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Subscribes to a resource on the appropriate backend server.
+    /// </summary>
+    /// <param name="context">The request context containing subscription parameters.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An empty result indicating success or an error.</returns>
+    public ValueTask<EmptyResult> SubscribeToResourceAsync(
+        RequestContext<SubscribeRequestParams> context,
+        CancellationToken cancellationToken)
+    {
+        return SubscribeToResourceCoreAsync(context.Params!.Uri, cancellationToken);
+    }
+
+    /// <summary>
+    /// Subscribes to a resource on the appropriate backend server (testable overload).
+    /// </summary>
+    /// <param name="uri">The resource URI to subscribe to.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An empty result indicating success or an error.</returns>
+    public async ValueTask<EmptyResult> SubscribeToResourceCoreAsync(
+        string uri,
+        CancellationToken cancellationToken)
+    {
+        ProxyLogger.SubscribingToResource(_logger, uri);
+
+        // Find which server owns this resource
+        var resourceInfo = await FindResourceAsync(uri, cancellationToken).ConfigureAwait(false);
+
+        if (resourceInfo is null)
+        {
+            ProxyLogger.ResourceNotFoundForSubscription(_logger, uri);
+            // Return empty result - subscription to non-existent resource is typically ignored
+            return new EmptyResult();
+        }
+
+        try
+        {
+            await resourceInfo.ClientInfo.Client.SubscribeToResourceAsync(resourceInfo.OriginalUri, cancellationToken).ConfigureAwait(false);
+            ProxyLogger.SubscribedToResource(_logger, resourceInfo.OriginalUri, resourceInfo.ServerName);
+        }
+        catch (Exception ex)
+        {
+            ProxyLogger.ResourceSubscriptionFailed(_logger, resourceInfo.OriginalUri, resourceInfo.ServerName, ex);
+            throw;
+        }
+
+        return new EmptyResult();
+    }
+
+    /// <summary>
+    /// Unsubscribes from a resource on the appropriate backend server.
+    /// </summary>
+    /// <param name="context">The request context containing unsubscription parameters.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An empty result indicating success or an error.</returns>
+    public ValueTask<EmptyResult> UnsubscribeFromResourceAsync(
+        RequestContext<UnsubscribeRequestParams> context,
+        CancellationToken cancellationToken)
+    {
+        return UnsubscribeFromResourceCoreAsync(context.Params!.Uri, cancellationToken);
+    }
+
+    /// <summary>
+    /// Unsubscribes from a resource on the appropriate backend server (testable overload).
+    /// </summary>
+    /// <param name="uri">The resource URI to unsubscribe from.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An empty result indicating success or an error.</returns>
+    public async ValueTask<EmptyResult> UnsubscribeFromResourceCoreAsync(
+        string uri,
+        CancellationToken cancellationToken)
+    {
+        ProxyLogger.UnsubscribingFromResource(_logger, uri);
+
+        // Find which server owns this resource
+        var resourceInfo = await FindResourceAsync(uri, cancellationToken).ConfigureAwait(false);
+
+        if (resourceInfo is null)
+        {
+            ProxyLogger.NoSubscriptionToUnsubscribe(_logger, uri);
+            // Return empty result - unsubscription from non-existent resource is typically ignored
+            return new EmptyResult();
+        }
+
+        try
+        {
+            await resourceInfo.ClientInfo.Client.UnsubscribeFromResourceAsync(resourceInfo.OriginalUri, cancellationToken).ConfigureAwait(false);
+            ProxyLogger.UnsubscribedFromResource(_logger, resourceInfo.OriginalUri, resourceInfo.ServerName);
+        }
+        catch (Exception ex)
+        {
+            ProxyLogger.ResourceUnsubscriptionFailed(_logger, resourceInfo.OriginalUri, resourceInfo.ServerName, ex);
+            throw;
+        }
+
+        return new EmptyResult();
     }
 }

@@ -13,8 +13,10 @@ public sealed class McpClientManager : IAsyncDisposable
 {
     private readonly ILogger<McpClientManager> _logger;
     private readonly ProxyClientHandlers? _proxyClientHandlers;
+    private readonly NotificationForwarder? _notificationForwarder;
     private readonly Dictionary<string, McpClientInfo> _clients = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
+    private ClientCapabilitySettings? _capabilitySettings;
     private bool _disposed;
 
     /// <summary>
@@ -22,10 +24,15 @@ public sealed class McpClientManager : IAsyncDisposable
     /// </summary>
     /// <param name="logger">The logger instance.</param>
     /// <param name="proxyClientHandlers">Optional handlers for forwarding sampling/elicitation/roots requests.</param>
-    public McpClientManager(ILogger<McpClientManager> logger, ProxyClientHandlers? proxyClientHandlers = null)
+    /// <param name="notificationForwarder">Optional notification forwarder for forwarding notifications to clients.</param>
+    public McpClientManager(
+        ILogger<McpClientManager> logger,
+        ProxyClientHandlers? proxyClientHandlers = null,
+        NotificationForwarder? notificationForwarder = null)
     {
         _logger = logger;
         _proxyClientHandlers = proxyClientHandlers;
+        _notificationForwarder = notificationForwarder;
     }
 
     /// <summary>
@@ -40,6 +47,8 @@ public sealed class McpClientManager : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task InitializeAsync(ProxyConfiguration configuration, CancellationToken cancellationToken = default)
     {
+        _capabilitySettings = configuration.Proxy.Capabilities.Client;
+
         await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -99,6 +108,9 @@ public sealed class McpClientManager : IAsyncDisposable
         var clientOptions = CreateClientOptions();
         var client = await McpClient.CreateAsync(transport, clientOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
 
+        // Register notification handlers for forwarding
+        RegisterNotificationHandlers(client, name);
+
         ProxyLogger.ConnectedToBackend(_logger, name);
 
         return new McpClientInfo
@@ -107,6 +119,53 @@ public sealed class McpClientManager : IAsyncDisposable
             Configuration = config,
             Client = new McpClientWrapper(client)
         };
+    }
+
+    /// <summary>
+    /// MCP notification method constants.
+    /// </summary>
+    private static class McpNotificationMethods
+    {
+        public const string ToolsListChanged = "notifications/tools/list_changed";
+        public const string ResourcesListChanged = "notifications/resources/list_changed";
+        public const string PromptsListChanged = "notifications/prompts/list_changed";
+        public const string ResourceUpdated = "notifications/resources/updated";
+    }
+
+    /// <summary>
+    /// Registers notification handlers on a client for forwarding to the proxy's connected clients.
+    /// </summary>
+    private void RegisterNotificationHandlers(McpClient client, string serverName)
+    {
+        if (_notificationForwarder is null)
+        {
+            return;
+        }
+
+        // Register progress notification handler
+        client.RegisterNotificationHandler(
+            NotificationMethods.ProgressNotification,
+            _notificationForwarder.CreateProgressNotificationHandler(serverName));
+
+        // Register list changed notification handlers
+        client.RegisterNotificationHandler(
+            McpNotificationMethods.ToolsListChanged,
+            _notificationForwarder.CreateNotificationHandler(serverName, McpNotificationMethods.ToolsListChanged));
+
+        client.RegisterNotificationHandler(
+            McpNotificationMethods.ResourcesListChanged,
+            _notificationForwarder.CreateNotificationHandler(serverName, McpNotificationMethods.ResourcesListChanged));
+
+        client.RegisterNotificationHandler(
+            McpNotificationMethods.PromptsListChanged,
+            _notificationForwarder.CreateNotificationHandler(serverName, McpNotificationMethods.PromptsListChanged));
+
+        // Register resource updated notification handler
+        client.RegisterNotificationHandler(
+            McpNotificationMethods.ResourceUpdated,
+            _notificationForwarder.CreateNotificationHandler(serverName, McpNotificationMethods.ResourceUpdated));
+
+        ProxyLogger.NotificationHandlersRegistered(_logger, serverName);
     }
 
     /// <summary>
@@ -142,22 +201,39 @@ public sealed class McpClientManager : IAsyncDisposable
         // Only configure capabilities and handlers if we have proxy client handlers
         if (_proxyClientHandlers is not null)
         {
-            options.Capabilities = new ClientCapabilities
-            {
-                // Enable sampling capability - allows backend servers to request LLM completions
-                Sampling = new SamplingCapability(),
-                // Enable elicitation capability - allows backend servers to request user input
-                Elicitation = new ElicitationCapability(),
-                // Enable roots capability - allows backend servers to request file system roots
-                Roots = new RootsCapability()
-            };
+            var capabilities = new ClientCapabilities();
+            var handlers = new McpClientHandlers();
 
-            options.Handlers = new McpClientHandlers
+            // Configure sampling capability
+            if (_capabilitySettings?.Sampling != false)
             {
-                SamplingHandler = _proxyClientHandlers.HandleSamplingAsync,
-                ElicitationHandler = _proxyClientHandlers.HandleElicitationAsync,
-                RootsHandler = _proxyClientHandlers.HandleRootsAsync
-            };
+                capabilities.Sampling = new SamplingCapability();
+                handlers.SamplingHandler = _proxyClientHandlers.HandleSamplingAsync;
+            }
+
+            // Configure elicitation capability
+            if (_capabilitySettings?.Elicitation != false)
+            {
+                capabilities.Elicitation = new ElicitationCapability();
+                handlers.ElicitationHandler = _proxyClientHandlers.HandleElicitationAsync;
+            }
+
+            // Configure roots capability
+            if (_capabilitySettings?.Roots != false)
+            {
+                capabilities.Roots = new RootsCapability();
+                handlers.RootsHandler = _proxyClientHandlers.HandleRootsAsync;
+            }
+
+            // Configure experimental capabilities
+            if (_capabilitySettings?.Experimental is { Count: > 0 })
+            {
+                capabilities.Experimental = _capabilitySettings.Experimental;
+                ProxyLogger.ExperimentalCapabilitiesConfigured(_logger, _capabilitySettings.Experimental.Count);
+            }
+
+            options.Capabilities = capabilities;
+            options.Handlers = handlers;
 
             ProxyLogger.ClientHandlersConfigured(_logger);
         }

@@ -61,4 +61,24 @@ public interface IMcpClientWrapper : IAsyncDisposable
         string name,
         IReadOnlyDictionary<string, object?>? arguments = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Subscribes to updates for a resource.
+    /// </summary>
+    /// <param name="uri">URI of the resource to subscribe to.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the subscription is established.</returns>
+    Task SubscribeToResourceAsync(
+        string uri,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Unsubscribes from updates for a resource.
+    /// </summary>
+    /// <param name="uri">URI of the resource to unsubscribe from.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the unsubscription is processed.</returns>
+    Task UnsubscribeFromResourceAsync(
+        string uri,
+        CancellationToken cancellationToken = default);
 }

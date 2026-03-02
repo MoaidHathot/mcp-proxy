@@ -6,34 +6,34 @@ using ModelContextProtocol.Protocol;
 namespace McpProxy.Core.Filtering;
 
 /// <summary>
-/// Filter that includes all tools (no filtering).
+/// Filter that includes all resources (no filtering).
 /// </summary>
-public sealed class NoFilter : IToolFilter
+public sealed class NoResourceFilter : IResourceFilter
 {
     /// <summary>
     /// Singleton instance.
     /// </summary>
-    public static readonly NoFilter Instance = new();
+    public static readonly NoResourceFilter Instance = new();
 
     /// <inheritdoc />
-    public bool ShouldInclude(Tool tool, string serverName) => true;
+    public bool ShouldInclude(Resource resource, string serverName) => true;
 }
 
 /// <summary>
-/// Filter that includes only tools matching specified patterns.
+/// Filter that includes only resources matching specified URI patterns.
 /// </summary>
-public sealed class AllowListFilter : IToolFilter
+public sealed class ResourceAllowListFilter : IResourceFilter
 {
     private readonly HashSet<string> _exactMatches;
     private readonly Regex[]? _wildcardPatterns;
     private readonly bool _caseInsensitive;
 
     /// <summary>
-    /// Initializes a new instance of <see cref="AllowListFilter"/>.
+    /// Initializes a new instance of <see cref="ResourceAllowListFilter"/>.
     /// </summary>
-    /// <param name="patterns">Patterns to include (supports * and ? wildcards).</param>
+    /// <param name="patterns">URI patterns to include (supports * and ? wildcards).</param>
     /// <param name="caseInsensitive">Whether matching is case-insensitive.</param>
-    public AllowListFilter(IEnumerable<string> patterns, bool caseInsensitive = true)
+    public ResourceAllowListFilter(IEnumerable<string> patterns, bool caseInsensitive = true)
     {
         _caseInsensitive = caseInsensitive;
         var comparison = caseInsensitive ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
@@ -49,9 +49,11 @@ public sealed class AllowListFilter : IToolFilter
     }
 
     /// <inheritdoc />
-    public bool ShouldInclude(Tool tool, string serverName)
+    public bool ShouldInclude(Resource resource, string serverName)
     {
-        if (_exactMatches.Contains(tool.Name))
+        var uri = resource.Uri;
+        
+        if (_exactMatches.Contains(uri))
         {
             return true;
         }
@@ -60,7 +62,7 @@ public sealed class AllowListFilter : IToolFilter
         {
             foreach (var pattern in _wildcardPatterns)
             {
-                if (pattern.IsMatch(tool.Name))
+                if (pattern.IsMatch(uri))
                 {
                     return true;
                 }
@@ -87,45 +89,45 @@ public sealed class AllowListFilter : IToolFilter
 }
 
 /// <summary>
-/// Filter that excludes tools matching specified patterns.
+/// Filter that excludes resources matching specified URI patterns.
 /// </summary>
-public sealed class DenyListFilter : IToolFilter
+public sealed class ResourceDenyListFilter : IResourceFilter
 {
-    private readonly AllowListFilter _innerFilter;
+    private readonly ResourceAllowListFilter _innerFilter;
 
     /// <summary>
-    /// Initializes a new instance of <see cref="DenyListFilter"/>.
+    /// Initializes a new instance of <see cref="ResourceDenyListFilter"/>.
     /// </summary>
-    /// <param name="patterns">Patterns to exclude (supports * and ? wildcards).</param>
+    /// <param name="patterns">URI patterns to exclude (supports * and ? wildcards).</param>
     /// <param name="caseInsensitive">Whether matching is case-insensitive.</param>
-    public DenyListFilter(IEnumerable<string> patterns, bool caseInsensitive = true)
+    public ResourceDenyListFilter(IEnumerable<string> patterns, bool caseInsensitive = true)
     {
-        _innerFilter = new AllowListFilter(patterns, caseInsensitive);
+        _innerFilter = new ResourceAllowListFilter(patterns, caseInsensitive);
     }
 
     /// <inheritdoc />
-    public bool ShouldInclude(Tool tool, string serverName)
+    public bool ShouldInclude(Resource resource, string serverName)
     {
         // Include if NOT matched by the deny list
-        return !_innerFilter.ShouldInclude(tool, serverName);
+        return !_innerFilter.ShouldInclude(resource, serverName);
     }
 }
 
 /// <summary>
-/// Filter that uses regex patterns for include/exclude.
+/// Filter that uses regex patterns for resource include/exclude.
 /// </summary>
-public sealed class RegexFilter : IToolFilter
+public sealed class ResourceRegexFilter : IResourceFilter
 {
     private readonly Regex? _includePattern;
     private readonly Regex? _excludePattern;
 
     /// <summary>
-    /// Initializes a new instance of <see cref="RegexFilter"/>.
+    /// Initializes a new instance of <see cref="ResourceRegexFilter"/>.
     /// </summary>
-    /// <param name="includePattern">Regex pattern for tools to include (null = include all).</param>
-    /// <param name="excludePattern">Regex pattern for tools to exclude (null = exclude none).</param>
+    /// <param name="includePattern">Regex pattern for resources to include (null = include all).</param>
+    /// <param name="excludePattern">Regex pattern for resources to exclude (null = exclude none).</param>
     /// <param name="caseInsensitive">Whether matching is case-insensitive.</param>
-    public RegexFilter(string? includePattern, string? excludePattern = null, bool caseInsensitive = true)
+    public ResourceRegexFilter(string? includePattern, string? excludePattern = null, bool caseInsensitive = true)
     {
         var options = RegexOptions.Compiled;
         if (caseInsensitive)
@@ -138,16 +140,18 @@ public sealed class RegexFilter : IToolFilter
     }
 
     /// <inheritdoc />
-    public bool ShouldInclude(Tool tool, string serverName)
+    public bool ShouldInclude(Resource resource, string serverName)
     {
-        // If include pattern exists, tool must match it
-        if (_includePattern is not null && !_includePattern.IsMatch(tool.Name))
+        var uri = resource.Uri;
+        
+        // If include pattern exists, resource must match it
+        if (_includePattern is not null && !_includePattern.IsMatch(uri))
         {
             return false;
         }
 
-        // If exclude pattern exists and matches, exclude the tool
-        if (_excludePattern is not null && _excludePattern.IsMatch(tool.Name))
+        // If exclude pattern exists and matches, exclude the resource
+        if (_excludePattern is not null && _excludePattern.IsMatch(uri))
         {
             return false;
         }
@@ -157,37 +161,37 @@ public sealed class RegexFilter : IToolFilter
 }
 
 /// <summary>
-/// Factory for creating filters from configuration.
+/// Factory for creating resource filters from configuration.
 /// </summary>
-public static class FilterFactory
+public static class ResourceFilterFactory
 {
     /// <summary>
-    /// Creates a filter from configuration.
+    /// Creates a resource filter from configuration.
     /// </summary>
     /// <param name="config">The filter configuration.</param>
     /// <returns>The created filter.</returns>
-    public static IToolFilter Create(FilterConfiguration config)
+    public static IResourceFilter Create(FilterConfiguration config)
     {
         if (config.Mode == FilterMode.None || config.Patterns is null or { Length: 0 })
         {
-            return NoFilter.Instance;
+            return NoResourceFilter.Instance;
         }
 
         return config.Mode switch
         {
-            FilterMode.AllowList => new AllowListFilter(config.Patterns, config.CaseInsensitive),
-            FilterMode.DenyList => new DenyListFilter(config.Patterns, config.CaseInsensitive),
+            FilterMode.AllowList => new ResourceAllowListFilter(config.Patterns, config.CaseInsensitive),
+            FilterMode.DenyList => new ResourceDenyListFilter(config.Patterns, config.CaseInsensitive),
             FilterMode.Regex => CreateRegexFilter(config),
-            _ => NoFilter.Instance
+            _ => NoResourceFilter.Instance
         };
     }
 
-    private static RegexFilter CreateRegexFilter(FilterConfiguration config)
+    private static ResourceRegexFilter CreateRegexFilter(FilterConfiguration config)
     {
         var patterns = config.Patterns!;
         var includePattern = patterns.Length > 0 ? patterns[0] : null;
         var excludePattern = patterns.Length > 1 ? patterns[1] : null;
 
-        return new RegexFilter(includePattern, excludePattern, config.CaseInsensitive);
+        return new ResourceRegexFilter(includePattern, excludePattern, config.CaseInsensitive);
     }
 }

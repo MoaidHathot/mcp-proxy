@@ -42,6 +42,21 @@ public sealed class ProxySettings
     /// Gets or sets the logging configuration.
     /// </summary>
     public LoggingConfiguration Logging { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the caching configuration.
+    /// </summary>
+    public CachingConfiguration Caching { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the capability configuration.
+    /// </summary>
+    public CapabilityConfiguration Capabilities { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the telemetry configuration.
+    /// </summary>
+    public TelemetryConfiguration Telemetry { get; set; } = new();
 }
 
 /// <summary>
@@ -217,4 +232,165 @@ public sealed class LoggingConfiguration
     /// Gets or sets whether to mask sensitive data in logs.
     /// </summary>
     public bool SensitiveDataMask { get; set; } = true;
+}
+
+/// <summary>
+/// Caching configuration.
+/// </summary>
+public sealed class CachingConfiguration
+{
+    /// <summary>
+    /// Gets or sets the tool cache configuration.
+    /// </summary>
+    public ToolCacheSettings Tools { get; set; } = new();
+}
+
+/// <summary>
+/// Tool cache settings.
+/// </summary>
+public sealed class ToolCacheSettings
+{
+    /// <summary>
+    /// Gets or sets whether tool caching is enabled.
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the time-to-live for cached tool lists in seconds.
+    /// Default is 60 seconds.
+    /// </summary>
+    public int TtlSeconds { get; set; } = 60;
+}
+
+/// <summary>
+/// Capability configuration for the proxy.
+/// </summary>
+public sealed class CapabilityConfiguration
+{
+    /// <summary>
+    /// Gets or sets the server capabilities to advertise to clients.
+    /// </summary>
+    public ServerCapabilitySettings Server { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the client capabilities to advertise to backend servers.
+    /// </summary>
+    public ClientCapabilitySettings Client { get; set; } = new();
+}
+
+/// <summary>
+/// Server capability settings advertised to clients.
+/// </summary>
+public sealed class ServerCapabilitySettings
+{
+    /// <summary>
+    /// Gets or sets experimental/custom capabilities.
+    /// These are non-standard capabilities that the proxy advertises to clients.
+    /// Each key represents a capability name, and the value is the capability configuration object.
+    /// </summary>
+    public Dictionary<string, object>? Experimental { get; set; }
+}
+
+/// <summary>
+/// Client capability settings advertised to backend servers.
+/// </summary>
+public sealed class ClientCapabilitySettings
+{
+    /// <summary>
+    /// Gets or sets whether sampling capability is enabled.
+    /// When enabled, backend servers can request LLM completions from the client.
+    /// </summary>
+    public bool Sampling { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether elicitation capability is enabled.
+    /// When enabled, backend servers can request user input.
+    /// </summary>
+    public bool Elicitation { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether roots capability is enabled.
+    /// When enabled, backend servers can request file system roots.
+    /// </summary>
+    public bool Roots { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets experimental/custom capabilities.
+    /// These are non-standard capabilities that the proxy advertises to backend servers.
+    /// Each key represents a capability name, and the value is the capability configuration object.
+    /// </summary>
+    public Dictionary<string, object>? Experimental { get; set; }
+}
+
+/// <summary>
+/// Telemetry configuration for OpenTelemetry integration.
+/// </summary>
+public sealed class TelemetryConfiguration
+{
+    /// <summary>
+    /// Gets or sets whether telemetry is enabled.
+    /// </summary>
+    public bool Enabled { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets the service name for telemetry.
+    /// </summary>
+    public string ServiceName { get; set; } = "McpProxy";
+
+    /// <summary>
+    /// Gets or sets the service version for telemetry.
+    /// </summary>
+    public string? ServiceVersion { get; set; }
+
+    /// <summary>
+    /// Gets or sets the metrics configuration.
+    /// </summary>
+    public MetricsConfiguration Metrics { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the tracing configuration.
+    /// </summary>
+    public TracingConfiguration Tracing { get; set; } = new();
+}
+
+/// <summary>
+/// Metrics configuration for OpenTelemetry.
+/// </summary>
+public sealed class MetricsConfiguration
+{
+    /// <summary>
+    /// Gets or sets whether metrics are enabled.
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the console exporter (for debugging).
+    /// </summary>
+    public bool ConsoleExporter { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets the OTLP endpoint for metrics export.
+    /// </summary>
+    public string? OtlpEndpoint { get; set; }
+}
+
+/// <summary>
+/// Tracing configuration for OpenTelemetry.
+/// </summary>
+public sealed class TracingConfiguration
+{
+    /// <summary>
+    /// Gets or sets whether tracing is enabled.
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the console exporter (for debugging).
+    /// </summary>
+    public bool ConsoleExporter { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets the OTLP endpoint for trace export.
+    /// </summary>
+    public string? OtlpEndpoint { get; set; }
 }

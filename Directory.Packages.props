@@ -11,11 +11,17 @@
     <!-- Core packages -->
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.0-preview.5.25277.114" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.0-preview.5.25277.114" />
-    <PackageVersion Include="ModelContextProtocol" Version="0.6.0-preview.1" />
-    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.6.0-preview.1" />
-    <PackageVersion Include="Dumpify" Version="0.6.6" />
+    <PackageVersion Include="ModelContextProtocol" Version="1.0.0" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.0.0" />
+    <PackageVersion Include="Dumpify" Version="0.7.0" />
     <!-- Authentication -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0-preview.5.25277.114" />
+    <!-- OpenTelemetry -->
+    <PackageVersion Include="OpenTelemetry" Version="1.12.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.12.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Console" Version="1.12.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.12.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
     <!-- CLI -->
     <PackageVersion Include="System.CommandLine" Version="2.0.0-beta5.25306.1" />
     <!-- Test packages -->

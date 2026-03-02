@@ -1,0 +1,142 @@
+{
+  // Proxy-level settings (all optional)
+  "proxy": {
+    "serverInfo": {
+      "name": "My MCP Proxy",
+      "version": "1.0.0",
+      "instructions": "This proxy aggregates multiple MCP servers."
+    },
+    "routing": {
+      // "unified" (default) - all servers on one endpoint
+      // "perServer" - each server on its own endpoint
+      "mode": "unified",
+      "basePath": "/mcp"
+    },
+    "authentication": {
+      "enabled": false,
+      // Type: "none", "apiKey", or "bearer"
+      "type": "none",
+      "apiKey": {
+        "header": "X-API-Key",
+        // Use "env:VAR_NAME" to read from environment variable
+        "value": "env:MCP_PROXY_API_KEY"
+      }
+    },
+    "logging": {
+      "logRequests": true,
+      "logResponses": false,
+      "sensitiveDataMask": true
+    }
+  },
+
+  // Backend MCP servers
+  "mcp": {
+    // Example 1: Local STDIO server (filesystem access)
+    "filesystem": {
+      "type": "stdio",
+      "title": "Filesystem Server",
+      "description": "Provides file system access to the workspace",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "/workspace"],
+      "environment": {
+        // Environment variables for the spawned process
+        // Use "env:VAR_NAME" to read from current environment
+        "NODE_ENV": "production"
+      },
+      "tools": {
+        // Add prefix to all tools: read_file -> fs_read_file
+        "prefix": "fs",
+        "prefixSeparator": "_",
+        "filter": {
+          // DenyList dangerous operations
+          "mode": "denylist",
+          "patterns": ["delete_*", "remove_*", "write_*"],
+          "caseInsensitive": true
+        }
+      },
+      "hooks": {
+        "preInvoke": [
+          {
+            "type": "logging",
+            "config": {
+              "logLevel": "debug",
+              "logArguments": true
+            }
+          }
+        ]
+      },
+      "enabled": true
+    },
+
+    // Example 2: Remote SSE server (Context7 documentation)
+    "context7": {
+      "type": "sse",
+      "title": "Context7",
+      "description": "Context7 documentation search and retrieval",
+      "url": "https://mcp.context7.com/sse",
+      "tools": {
+        "prefix": "c7"
+      }
+    },
+
+    // Example 3: Azure MCP Server via dnx
+    "azure": {
+      "type": "stdio",
+      "title": "Azure MCP Server",
+      "description": "The official Azure MCP Server for Azure resource management",
+      "command": "dnx",
+      "arguments": ["Azure.Mcp@2.0.0-beta.10", "--yes", "--", "server", "start"],
+      "tools": {
+        "prefix": "az",
+        "filter": {
+          // AllowList only specific tools
+          "mode": "allowlist",
+          "patterns": ["list_*", "get_*", "describe_*"]
+        }
+      }
+    },
+
+    // Example 4: Remote HTTP server with custom headers
+    "github": {
+      "type": "http",
+      "title": "GitHub MCP",
+      "description": "GitHub API integration",
+      "url": "https://github-mcp.example.com",
+      "headers": {
+        // Use ${VAR_NAME} syntax for environment variable substitution
+        "Authorization": "Bearer ${GITHUB_TOKEN}",
+        "X-Custom-Header": "custom-value"
+      },
+      "tools": {
+        "prefix": "gh"
+      },
+      "hooks": {
+        "postInvoke": [
+          {
+            "type": "outputTransform",
+            "config": {
+              // Redact sensitive data from output
+              "redactPatterns": ["password", "secret", "token", "api_key"]
+            }
+          }
+        ]
+      }
+    },
+
+    // Example 5: Microsoft Learn MCP (HTTP with auto-detection)
+    "microsoft-learn": {
+      "type": "http",
+      "title": "Microsoft Learn MCP",
+      "description": "Microsoft Learn documentation and tutorials",
+      "url": "https://learn.microsoft.com/api/mcp"
+    },
+
+    // Example 6: Disabled server (won't be connected)
+    "disabled-server": {
+      "type": "stdio",
+      "command": "node",
+      "arguments": ["disabled-server.js"],
+      "enabled": false
+    }
+  }
+}

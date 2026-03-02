@@ -84,6 +84,22 @@ public sealed class McpClientWrapper : IMcpClientWrapper
     }
 
     /// <inheritdoc />
+    public async Task SubscribeToResourceAsync(
+        string uri,
+        CancellationToken cancellationToken = default)
+    {
+        await _client.SubscribeToResourceAsync(uri, cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task UnsubscribeFromResourceAsync(
+        string uri,
+        CancellationToken cancellationToken = default)
+    {
+        await _client.UnsubscribeFromResourceAsync(uri, cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
         return _client.DisposeAsync();

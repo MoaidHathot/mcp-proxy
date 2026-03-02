@@ -46,13 +46,13 @@ public class ToolFiltersTests
         }
     }
 
-    public class WhitelistFilterTests
+    public class AllowListFilterTests
     {
         [Fact]
         public void ShouldInclude_ExactMatch_ReturnsTrue()
         {
             // Arrange
-            var filter = new WhitelistFilter(["tool1", "tool2"]);
+            var filter = new AllowListFilter(["tool1", "tool2"]);
             var tool = CreateTool("tool1");
 
             // Act
@@ -66,7 +66,7 @@ public class ToolFiltersTests
         public void ShouldInclude_NoMatch_ReturnsFalse()
         {
             // Arrange
-            var filter = new WhitelistFilter(["tool1", "tool2"]);
+            var filter = new AllowListFilter(["tool1", "tool2"]);
             var tool = CreateTool("tool3");
 
             // Act
@@ -80,7 +80,7 @@ public class ToolFiltersTests
         public void ShouldInclude_CaseInsensitiveMatch_ReturnsTrue()
         {
             // Arrange
-            var filter = new WhitelistFilter(["MyTool"], caseInsensitive: true);
+            var filter = new AllowListFilter(["MyTool"], caseInsensitive: true);
             var tool = CreateTool("mytool");
 
             // Act
@@ -94,7 +94,7 @@ public class ToolFiltersTests
         public void ShouldInclude_CaseSensitiveNoMatch_ReturnsFalse()
         {
             // Arrange
-            var filter = new WhitelistFilter(["MyTool"], caseInsensitive: false);
+            var filter = new AllowListFilter(["MyTool"], caseInsensitive: false);
             var tool = CreateTool("mytool");
 
             // Act
@@ -115,7 +115,7 @@ public class ToolFiltersTests
         public void ShouldInclude_WildcardPatterns(string pattern, string toolName, bool expected)
         {
             // Arrange
-            var filter = new WhitelistFilter([pattern]);
+            var filter = new AllowListFilter([pattern]);
             var tool = CreateTool(toolName);
 
             // Act
@@ -129,7 +129,7 @@ public class ToolFiltersTests
         public void ShouldInclude_MixedPatternsAndExact_MatchesCorrectly()
         {
             // Arrange
-            var filter = new WhitelistFilter(["exact_tool", "prefix_*", "*_suffix"]);
+            var filter = new AllowListFilter(["exact_tool", "prefix_*", "*_suffix"]);
 
             // Act & Assert
             filter.ShouldInclude(CreateTool("exact_tool"), "server").Should().BeTrue();
@@ -139,13 +139,13 @@ public class ToolFiltersTests
         }
     }
 
-    public class BlacklistFilterTests
+    public class DenyListFilterTests
     {
         [Fact]
         public void ShouldInclude_ExactMatch_ReturnsFalse()
         {
             // Arrange
-            var filter = new BlacklistFilter(["blocked_tool"]);
+            var filter = new DenyListFilter(["blocked_tool"]);
             var tool = CreateTool("blocked_tool");
 
             // Act
@@ -159,7 +159,7 @@ public class ToolFiltersTests
         public void ShouldInclude_NoMatch_ReturnsTrue()
         {
             // Arrange
-            var filter = new BlacklistFilter(["blocked_tool"]);
+            var filter = new DenyListFilter(["blocked_tool"]);
             var tool = CreateTool("allowed_tool");
 
             // Act
@@ -177,7 +177,7 @@ public class ToolFiltersTests
         public void ShouldInclude_WildcardPatterns(string pattern, string toolName, bool expected)
         {
             // Arrange
-            var filter = new BlacklistFilter([pattern]);
+            var filter = new DenyListFilter([pattern]);
             var tool = CreateTool(toolName);
 
             // Act
@@ -191,7 +191,7 @@ public class ToolFiltersTests
         public void ShouldInclude_MultiplePatterns_BlocksAll()
         {
             // Arrange
-            var filter = new BlacklistFilter(["internal_*", "*_debug", "admin"]);
+            var filter = new DenyListFilter(["internal_*", "*_debug", "admin"]);
 
             // Act & Assert
             filter.ShouldInclude(CreateTool("internal_api"), "server").Should().BeFalse();

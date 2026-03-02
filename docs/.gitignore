@@ -1,0 +1,9 @@
+# Ignore Jekyll build files
+_site/
+.sass-cache/
+.jekyll-cache/
+.jekyll-metadata
+vendor/
+
+# Local Gemfile.lock
+Gemfile.lock

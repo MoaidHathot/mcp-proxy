@@ -117,7 +117,7 @@ public class SingleServerProxyTests : IAsyncDisposable
                 {
                     Filter = new FilterConfiguration
                     {
-                        Mode = FilterMode.Blacklist,
+                        Mode = FilterMode.DenyList,
                         Patterns = ["excluded*"]
                     }
                 }
