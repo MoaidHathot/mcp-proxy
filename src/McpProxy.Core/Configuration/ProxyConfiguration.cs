@@ -132,7 +132,12 @@ public enum AuthenticationType
     /// <summary>
     /// Bearer token (JWT) authentication.
     /// </summary>
-    Bearer
+    Bearer,
+
+    /// <summary>
+    /// Azure Active Directory (Microsoft Entra ID) authentication.
+    /// </summary>
+    AzureAd
 }
 
 /// <summary>
@@ -159,6 +164,11 @@ public sealed class AuthenticationConfiguration
     /// Gets or sets the Bearer token configuration.
     /// </summary>
     public BearerConfiguration Bearer { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the Azure AD (Microsoft Entra ID) configuration.
+    /// </summary>
+    public AzureAdConfiguration AzureAd { get; set; } = new();
 }
 
 /// <summary>
@@ -211,6 +221,71 @@ public sealed class BearerConfiguration
     /// Gets or sets the valid issuers.
     /// </summary>
     public string[]? ValidIssuers { get; set; }
+}
+
+/// <summary>
+/// Azure Active Directory (Microsoft Entra ID) authentication configuration.
+/// </summary>
+public sealed class AzureAdConfiguration
+{
+    /// <summary>
+    /// Gets or sets the Azure AD instance URL.
+    /// Default is "https://login.microsoftonline.com/".
+    /// </summary>
+    public string Instance { get; set; } = "https://login.microsoftonline.com/";
+
+    /// <summary>
+    /// Gets or sets the Azure AD tenant ID.
+    /// Can be the tenant GUID or domain name (e.g., "contoso.onmicrosoft.com").
+    /// Use "common" for multi-tenant applications.
+    /// </summary>
+    public string? TenantId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the application (client) ID registered in Azure AD.
+    /// </summary>
+    public string? ClientId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the expected audience for token validation.
+    /// If not specified, defaults to the ClientId.
+    /// </summary>
+    public string? Audience { get; set; }
+
+    /// <summary>
+    /// Gets or sets the valid issuers for token validation.
+    /// If not specified, defaults to the Azure AD issuer based on TenantId.
+    /// </summary>
+    public string[]? ValidIssuers { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to validate the issuer.
+    /// </summary>
+    public bool ValidateIssuer { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether to validate the audience.
+    /// </summary>
+    public bool ValidateAudience { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the required scopes for authorization.
+    /// If specified, the token must contain at least one of these scopes.
+    /// </summary>
+    public string[]? RequiredScopes { get; set; }
+
+    /// <summary>
+    /// Gets or sets the required roles for authorization.
+    /// If specified, the token must contain at least one of these roles.
+    /// </summary>
+    public string[]? RequiredRoles { get; set; }
+
+    /// <summary>
+    /// Gets the authority URL constructed from Instance and TenantId.
+    /// </summary>
+    public string Authority => TenantId is not null 
+        ? $"{Instance.TrimEnd('/')}/{TenantId}" 
+        : Instance.TrimEnd('/');
 }
 
 /// <summary>

@@ -38,6 +38,7 @@ public sealed class AuthenticationMiddleware
             {
                 AuthenticationType.ApiKey => new ApiKeyAuthHandler(config.ApiKey),
                 AuthenticationType.Bearer => new BearerTokenAuthHandler(config.Bearer),
+                AuthenticationType.AzureAd => new AzureAdAuthHandler(config.AzureAd),
                 _ => null
             };
         }

@@ -1,4 +1,5 @@
 using System.CommandLine;
+using McpProxy.Core.Authentication;
 using McpProxy.Core.Configuration;
 using McpProxy.Core.Hooks;
 using McpProxy.Core.Logging;
@@ -192,6 +193,9 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
         // Unified mode: All servers on one endpoint
         app.MapMcp(configuration.Proxy.Routing.BasePath);
     }
+
+    // Map OAuth metadata discovery endpoints (RFC 8414) for MCP authentication
+    app.MapOAuthMetadata(configuration.Proxy.Authentication);
 
     await app.RunAsync().ConfigureAwait(false);
 }

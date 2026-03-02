@@ -14,12 +14,21 @@
     },
     "authentication": {
       "enabled": false,
-      // Type: "none", "apiKey", or "bearer"
+      // Type: "none", "apiKey", "bearer", or "azureAd"
       "type": "none",
       "apiKey": {
         "header": "X-API-Key",
         // Use "env:VAR_NAME" to read from environment variable
         "value": "env:MCP_PROXY_API_KEY"
+      },
+      // Azure AD / Microsoft Entra ID authentication
+      "azureAd": {
+        // "instance": "https://login.microsoftonline.com/",
+        // "tenantId": "your-tenant-id-or-domain",
+        // "clientId": "your-application-client-id",
+        // "audience": "api://your-application-client-id",
+        // "requiredScopes": ["access_as_user"],
+        // "requiredRoles": ["MCP.User"]
       }
     },
     "logging": {

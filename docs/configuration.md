@@ -101,7 +101,7 @@ Configure authentication for HTTP endpoints:
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `enabled` | bool | `false` | Enable authentication |
-| `type` | string | `"none"` | `"none"`, `"apiKey"`, or `"bearer"` |
+| `type` | string | `"none"` | `"none"`, `"apiKey"`, `"bearer"`, or `"azureAd"` |
 
 **API Key Authentication:**
 
@@ -120,6 +120,48 @@ Configure authentication for HTTP endpoints:
 | `bearer.validateIssuer` | bool | `true` | Whether to validate the token issuer |
 | `bearer.validateAudience` | bool | `true` | Whether to validate the token audience |
 | `bearer.validIssuers` | string[] | `null` | List of valid issuers (alternative to using authority) |
+
+**Azure AD (Microsoft Entra ID) Authentication:**
+
+Azure AD authentication provides enterprise-grade authentication using Microsoft Entra ID (formerly Azure Active Directory). It automatically fetches and caches JWKS keys from Azure AD for token validation.
+
+```json
+{
+  "proxy": {
+    "authentication": {
+      "enabled": true,
+      "type": "azureAd",
+      "azureAd": {
+        "tenantId": "your-tenant-id",
+        "clientId": "your-application-client-id",
+        "audience": "api://your-application-client-id",
+        "requiredScopes": ["access_as_user"],
+        "requiredRoles": ["MCP.User"]
+      }
+    }
+  }
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `azureAd.instance` | string | `"https://login.microsoftonline.com/"` | Azure AD instance URL |
+| `azureAd.tenantId` | string | - | Azure AD tenant ID or domain (use `"common"` for multi-tenant) |
+| `azureAd.clientId` | string | - | Application (client) ID registered in Azure AD |
+| `azureAd.audience` | string | `clientId` | Expected audience for token validation |
+| `azureAd.validIssuers` | string[] | `null` | Valid issuers (defaults to Azure AD issuers for tenant) |
+| `azureAd.validateIssuer` | bool | `true` | Whether to validate the token issuer |
+| `azureAd.validateAudience` | bool | `true` | Whether to validate the token audience |
+| `azureAd.requiredScopes` | string[] | `null` | Required OAuth scopes (token must contain at least one) |
+| `azureAd.requiredRoles` | string[] | `null` | Required app roles (token must contain at least one) |
+
+**OAuth 2.0 Metadata Discovery:**
+
+When authentication is enabled, the proxy exposes OAuth 2.0 metadata discovery endpoints following RFC 8414:
+- `/.well-known/oauth-authorization-server` - OAuth 2.0 Authorization Server Metadata
+- `/.well-known/openid-configuration` - OpenID Connect Discovery
+
+MCP clients can use these endpoints to discover how to authenticate with the proxy.
 
 ### Logging
 

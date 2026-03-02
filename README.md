@@ -14,7 +14,7 @@ A proxy server for the [Model Context Protocol (MCP)](https://modelcontextprotoc
 - **Hook system** - Pre-invoke and post-invoke hooks for logging, input/output transformation
 - **Advanced MCP support** - Sampling, elicitation, and roots forwarding to clients
 - **Per-server routing** - Expose each server on its own HTTP endpoint or aggregate all under one
-- **Authentication** - API key and Bearer token authentication for HTTP endpoints
+- **Authentication** - API key, Bearer token, and Azure AD (Microsoft Entra ID) authentication for HTTP endpoints
 
 ## Installation
 
@@ -152,7 +152,7 @@ The configuration file is JSON with support for comments and trailing commas. En
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `proxy.authentication.enabled` | bool | `false` | Enable authentication |
-| `proxy.authentication.type` | string | `"none"` | `"none"`, `"apiKey"`, or `"bearer"` |
+| `proxy.authentication.type` | string | `"none"` | `"none"`, `"apiKey"`, `"bearer"`, or `"azureAd"` |
 | `proxy.authentication.apiKey.header` | string | `"X-API-Key"` | Header name for API key |
 | `proxy.authentication.apiKey.queryParameter` | string | `null` | Query parameter fallback |
 | `proxy.authentication.apiKey.value` | string | `null` | Expected API key (supports `env:VAR`) |
@@ -161,6 +161,11 @@ The configuration file is JSON with support for comments and trailing commas. En
 | `proxy.authentication.bearer.validateIssuer` | bool | `true` | Whether to validate the issuer |
 | `proxy.authentication.bearer.validateAudience` | bool | `true` | Whether to validate the audience |
 | `proxy.authentication.bearer.validIssuers` | string[] | `null` | List of valid issuers |
+| `proxy.authentication.azureAd.tenantId` | string | `null` | Azure AD tenant ID or domain |
+| `proxy.authentication.azureAd.clientId` | string | `null` | Application (client) ID |
+| `proxy.authentication.azureAd.audience` | string | `clientId` | Expected audience |
+| `proxy.authentication.azureAd.requiredScopes` | string[] | `null` | Required OAuth scopes |
+| `proxy.authentication.azureAd.requiredRoles` | string[] | `null` | Required app roles |
 
 ### Logging Settings
 
