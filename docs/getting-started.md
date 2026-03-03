@@ -244,6 +244,8 @@ mcpproxy -t stdio -c ./mcp-proxy.json -v
 
 The repository includes comprehensive sample projects demonstrating various features:
 
+### JSON Configuration Samples (01-10)
+
 | Sample | Description |
 |--------|-------------|
 | [01-basic-single-server](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/01-basic-single-server) | Basic setup with a single MCP server |
@@ -251,8 +253,16 @@ The repository includes comprehensive sample projects demonstrating various feat
 | [03-tool-filtering](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/03-tool-filtering) | Allowlist, denylist, and regex filtering |
 | [04-remote-servers](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/04-remote-servers) | HTTP/SSE backend connections |
 | [05-http-api-key-auth](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/05-http-api-key-auth) | API key authentication |
-| [06-hooks](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/06-hooks) | Logging, rate limiting, and content filtering |
+| [06-hooks](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/06-hooks) | Logging, rate limiting, audit, and content filtering |
 | [07-azure-ad-auth](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/07-azure-ad-auth) | Azure AD OAuth2/OIDC authentication |
 | [08-telemetry](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/08-telemetry) | OpenTelemetry metrics and tracing |
 | [09-per-server-routing](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/09-per-server-routing) | Per-server HTTP endpoints |
 | [10-enterprise-complete](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/10-enterprise-complete) | Complete enterprise setup |
+
+### SDK/Programmatic Samples (11-13)
+
+| Sample | Description |
+|--------|-------------|
+| [11-sdk-basic](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/11-sdk-basic) | Programmatic configuration with fluent API |
+| [12-sdk-hooks-interceptors](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/12-sdk-hooks-interceptors) | Code-based hooks and tool interceptors |
+| [13-sdk-virtual-tools](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/13-sdk-virtual-tools) | Virtual tools and tool modification |

@@ -426,3 +426,15 @@ Both client and server can advertise experimental capabilities:
 ```
 
 These are passed through during capability negotiation, allowing custom protocol extensions.
+
+## Sample Projects
+
+For hands-on examples of advanced features, see these sample projects:
+
+| Sample | Description |
+|--------|-------------|
+| [08-caching](../samples/08-caching/) | Tool caching configuration with TTL |
+| [09-telemetry](../samples/09-telemetry/) | OpenTelemetry metrics and tracing setup |
+| [12-sdk-hooks-interceptors](../samples/12-sdk-hooks-interceptors/) | Programmatic hooks and interceptors |
+
+See the [samples README](../samples/README.md) for the complete list of 13 samples.

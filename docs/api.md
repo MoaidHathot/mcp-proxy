@@ -19,6 +19,9 @@ MCP Proxy can be used as a library in your .NET applications for programmatic co
 <li><a href="#filtering">Filtering</a></li>
 <li><a href="#hooks">Hooks</a></li>
 <li><a href="#extension-points">Extension Points</a></li>
+<li><a href="#asp-net-core-integration">ASP.NET Core Integration</a></li>
+<li><a href="#sdk-fluent-api">SDK Fluent API</a></li>
+<li><a href="#sample-projects">Sample Projects</a></li>
 </ul>
 </div>
 
@@ -281,10 +284,10 @@ var filter = FilterFactory.Create(new FilterConfiguration
 ```csharp
 public class CustomFilter : IToolFilter
 {
-    public bool ShouldInclude(Tool tool)
+    public bool ShouldInclude(Tool tool, string serverName)
     {
-        // Custom logic
-        return tool.Name.StartsWith("allowed_");
+        // Custom logic - has access to both tool and server name
+        return tool.Name.StartsWith("allowed_") || serverName == "trusted-server";
     }
 }
 
@@ -530,3 +533,177 @@ app.UseMcpServer();
 
 await app.RunAsync();
 ```
+
+## SDK Fluent API
+
+The SDK provides a high-level fluent API for configuring the proxy programmatically. This is the recommended approach when you need dynamic configuration, custom hooks, or integration with existing applications.
+
+### Dependency Injection Setup
+
+```csharp
+var builder = Host.CreateApplicationBuilder(args);
+
+builder.Services.AddMcpProxy(proxy =>
+{
+    // Configure proxy info
+    proxy.WithServerInfo("My Proxy", "1.0.0", "A custom MCP proxy");
+    proxy.WithToolCaching(enabled: true, ttlSeconds: 120);
+
+    // Add servers using fluent builder
+    proxy.AddStdioServer("filesystem", "npx", "-y", "@anthropic/mcp-server-filesystem", "/workspace")
+        .WithTitle("Filesystem")
+        .WithToolPrefix("fs")
+        .DenyTools("delete_*")
+        .Build();
+
+    proxy.AddSseServer("context7", "https://mcp.context7.com/sse")
+        .Build();
+});
+
+var app = builder.Build();
+
+// Initialize connections to all backends
+await app.Services.InitializeMcpProxyAsync();
+
+await app.RunAsync();
+```
+
+### Fluent Extension Methods
+
+The SDK provides lambda-based extensions for inline configuration:
+
+```csharp
+proxy
+    // Lambda-based pre-invoke hook
+    .OnPreInvoke(ctx =>
+    {
+        Console.WriteLine($"Calling: {ctx.ToolName} on {ctx.ServerName}");
+        ctx.Items["startTime"] = Stopwatch.StartNew();
+        return ValueTask.CompletedTask;
+    })
+    // Lambda-based post-invoke hook
+    .OnPostInvoke((ctx, result) =>
+    {
+        var sw = (Stopwatch)ctx.Items["startTime"];
+        Console.WriteLine($"Completed in {sw.ElapsedMilliseconds}ms");
+        return ValueTask.FromResult(result);
+    })
+    // Lambda-based tool interceptor
+    .InterceptTools(tools => tools
+        .Where(t => !t.Tool.Name.Contains("deprecated")))
+    // Lambda-based tool call interceptor
+    .InterceptToolCalls((context, ct) =>
+    {
+        if (context.ToolName == "proxy_status")
+        {
+            return ValueTask.FromResult<CallToolResult?>(new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = "Healthy" }]
+            });
+        }
+        return ValueTask.FromResult<CallToolResult?>(null);
+    });
+```
+
+### Virtual Tools
+
+Create tools handled directly by the proxy:
+
+```csharp
+// Simple virtual tool
+proxy.AddTool(
+    name: "proxy_info",
+    description: "Get proxy information",
+    handler: (request, ct) => ValueTask.FromResult(new CallToolResult
+    {
+        Content = [new TextContentBlock { Text = "MCP Proxy v1.0.0" }]
+    }));
+
+// Virtual tool with full schema
+proxy.AddVirtualTool(
+    new Tool
+    {
+        Name = "calculate",
+        Description = "Evaluate math expressions",
+        InputSchema = new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["expression"] = new JsonObject { ["type"] = "string" }
+            }
+        }
+    },
+    handler: (request, ct) =>
+    {
+        var expr = request.Arguments?["expression"]?.ToString();
+        return ValueTask.FromResult(new CallToolResult
+        {
+            Content = [new TextContentBlock { Text = $"Result: {Evaluate(expr)}" }]
+        });
+    });
+```
+
+### Tool Modification
+
+Modify, rename, or remove tools from the aggregated list:
+
+```csharp
+proxy
+    // Rename tools
+    .RenameTool("filesystem_read_file", "read")
+    // Remove by pattern
+    .RemoveToolsByPattern("internal_*", "*_debug")
+    // Remove by predicate
+    .RemoveTools((tool, server) => tool.Name.StartsWith("admin_"))
+    // Modify tools
+    .ModifyTools(
+        predicate: (tool, _) => true,
+        modifier: tool => new Tool
+        {
+            Name = tool.Name,
+            Description = $"[Proxied] {tool.Description}",
+            InputSchema = tool.InputSchema
+        });
+```
+
+### Server-Specific Hooks
+
+```csharp
+proxy.AddStdioServer("filesystem", "npx", "-y", "@anthropic/mcp-server-filesystem", "/tmp")
+    .OnPreInvoke(ctx =>
+    {
+        // This only runs for filesystem server calls
+        Console.WriteLine($"Filesystem operation: {ctx.ToolName}");
+        return ValueTask.CompletedTask;
+    })
+    .OnPostInvoke((ctx, result) =>
+    {
+        Console.WriteLine($"Filesystem result: {result.IsError}");
+        return ValueTask.FromResult(result);
+    })
+    .Build();
+```
+
+## Sample Projects
+
+For complete working examples, see the sample projects:
+
+### JSON Configuration Samples
+
+- **[01-basic-single-server](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/01-basic-single-server)** - Single server setup
+- **[02-basic-multiple-servers](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/02-basic-multiple-servers)** - Server aggregation with prefixing
+- **[03-tool-filtering](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/03-tool-filtering)** - Allowlist, denylist, and regex filtering
+- **[04-remote-servers](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/04-remote-servers)** - HTTP/SSE backends
+- **[05-http-api-key-auth](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/05-http-api-key-auth)** - API key authentication
+- **[06-hooks](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/06-hooks)** - Logging, rate limiting, audit, content filtering
+- **[07-azure-ad-auth](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/07-azure-ad-auth)** - Azure AD authentication
+- **[08-telemetry](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/08-telemetry)** - OpenTelemetry integration
+- **[09-per-server-routing](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/09-per-server-routing)** - Per-server endpoints
+- **[10-enterprise-complete](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/10-enterprise-complete)** - Full enterprise setup
+
+### SDK/Programmatic Samples
+
+- **[11-sdk-basic](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/11-sdk-basic)** - SDK basics and DI integration
+- **[12-sdk-hooks-interceptors](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/12-sdk-hooks-interceptors)** - Custom hooks and interceptors
+- **[13-sdk-virtual-tools](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/13-sdk-virtual-tools)** - Virtual tools and tool modification

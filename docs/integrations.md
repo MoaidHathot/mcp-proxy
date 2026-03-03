@@ -376,3 +376,15 @@ export PATH="$PATH:$HOME/.dotnet/tools"
 1. Enable caching (enabled by default)
 2. Increase cache TTL for stable backends
 3. Consider using per-server routing for high-traffic deployments
+
+## Sample Projects
+
+For complete working examples of client integrations, see these sample projects:
+
+| Sample | Description |
+|--------|-------------|
+| [01-minimal](../samples/01-minimal/) | Basic stdio-based setup |
+| [02-multi-server](../samples/02-multi-server/) | Multiple backend servers |
+| [03-sse-server](../samples/03-sse-server/) | HTTP/SSE server configuration |
+
+See the [samples README](../samples/README.md) for the complete list of 13 samples covering JSON configuration and SDK/programmatic approaches.

@@ -765,3 +765,19 @@ The configuration file path can be set via:
   }
 }
 ```
+
+## Sample Projects
+
+For hands-on configuration examples, see the sample projects:
+
+| Sample | Configuration Features |
+|--------|----------------------|
+| [01-basic-single-server](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/01-basic-single-server) | Minimal STDIO configuration |
+| [02-basic-multiple-servers](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/02-basic-multiple-servers) | Multiple servers with prefixing |
+| [03-tool-filtering](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/03-tool-filtering) | Allowlist, denylist, regex filters |
+| [04-remote-servers](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/04-remote-servers) | HTTP/SSE backends with headers |
+| [05-http-api-key-auth](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/05-http-api-key-auth) | API key authentication |
+| [07-azure-ad-auth](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/07-azure-ad-auth) | Azure AD authentication |
+| [08-telemetry](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/08-telemetry) | OpenTelemetry configuration |
+| [09-per-server-routing](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/09-per-server-routing) | Per-server routing mode |
+| [10-enterprise-complete](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/10-enterprise-complete) | Complete enterprise configuration |

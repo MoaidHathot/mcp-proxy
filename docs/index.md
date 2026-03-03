@@ -120,7 +120,7 @@ That's it! Your MCP client can now connect to the proxy and access tools from bo
 - [Advanced]({{ '/advanced/' | relative_url }}) - Telemetry, caching, and notifications
 - [Client Integrations]({{ '/integrations/' | relative_url }}) - Setup guides for popular MCP clients
 - [API Reference]({{ '/api/' | relative_url }}) - Programmatic usage
-- [Sample Projects](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples) - 10 comprehensive examples
+- [Sample Projects](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples) - 13 comprehensive examples
 
 ## License
 

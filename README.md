@@ -609,9 +609,220 @@ ASPNETCORE_URLS=http://localhost:8080 mcpproxy -t sse -c ./mcp-proxy.json
 }
 ```
 
-## Programmatic Usage
+## SDK / Programmatic Usage
 
-MCP Proxy can also be used as a library in your .NET applications:
+MCP Proxy can be consumed as an SDK in your .NET applications, providing a fluent API for programmatic configuration instead of (or in addition to) JSON configuration files.
+
+### Quick Start
+
+```csharp
+using McpProxy.Core.Sdk;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+// Configure MCP Proxy using the SDK
+builder.Services.AddMcpProxy(proxy =>
+{
+    // Configure proxy metadata
+    proxy
+        .WithServerInfo("My MCP Proxy", "1.0.0", "Custom proxy server")
+        .WithToolCaching(enabled: true, ttlSeconds: 120);
+
+    // Add backend servers
+    proxy.AddStdioServer("filesystem", "npx", "-y", "@anthropic/mcp-server-filesystem", "/tmp")
+        .WithTitle("Filesystem Server")
+        .WithToolPrefix("fs")
+        .DenyTools("delete_*", "remove_*")
+        .Build();
+
+    proxy.AddSseServer("context7", "https://mcp.context7.com/sse")
+        .WithTitle("Context7")
+        .Build();
+
+    proxy.AddHttpServer("github", "https://api.github.com/mcp")
+        .WithHeaders(new Dictionary<string, string>
+        {
+            ["Authorization"] = $"Bearer {Environment.GetEnvironmentVariable("GITHUB_TOKEN")}"
+        })
+        .WithToolPrefix("gh")
+        .AllowTools("get_*", "list_*", "search_*")
+        .Build();
+});
+
+var app = builder.Build();
+await app.Services.InitializeMcpProxyAsync();
+await app.RunAsync();
+```
+
+### When to Use SDK vs JSON Configuration
+
+| Use Case | Recommended Approach |
+|----------|---------------------|
+| Static configuration | JSON file |
+| Dynamic server discovery | SDK |
+| Custom authentication logic | SDK |
+| Runtime tool modification | SDK |
+| Code-based hooks and interceptors | SDK |
+| CI/CD deployments | JSON file |
+| Integration with existing apps | SDK |
+
+### SDK API Reference
+
+#### IMcpProxyBuilder Methods
+
+| Method | Description |
+|--------|-------------|
+| `WithServerInfo(name, version, instructions)` | Set proxy server metadata |
+| `WithToolCaching(enabled, ttlSeconds)` | Configure tool list caching |
+| `AddStdioServer(name, command, args...)` | Add a local STDIO backend |
+| `AddHttpServer(name, url)` | Add a remote HTTP backend |
+| `AddSseServer(name, url)` | Add a remote SSE backend |
+| `WithGlobalPreInvokeHook(hook)` | Add a pre-invoke hook for all servers |
+| `WithGlobalPostInvokeHook(hook)` | Add a post-invoke hook for all servers |
+| `AddVirtualTool(tool, handler)` | Add a proxy-handled virtual tool |
+| `WithToolInterceptor(interceptor)` | Intercept and modify tool lists |
+| `WithToolCallInterceptor(interceptor)` | Intercept tool calls |
+| `WithConfigurationFile(path)` | Merge with JSON configuration |
+
+#### IServerBuilder Methods
+
+| Method | Description |
+|--------|-------------|
+| `WithTitle(title)` | Set display name |
+| `WithDescription(description)` | Set description |
+| `WithEnvironment(dict)` | Set environment variables (STDIO) |
+| `WithHeaders(dict)` | Set HTTP headers (HTTP/SSE) |
+| `WithToolPrefix(prefix, separator)` | Add prefix to tool names |
+| `WithResourcePrefix(prefix, separator)` | Add prefix to resource URIs |
+| `AllowTools(patterns...)` | Only include matching tools |
+| `DenyTools(patterns...)` | Exclude matching tools |
+| `WithPreInvokeHook(hook)` | Add server-specific pre-invoke hook |
+| `WithPostInvokeHook(hook)` | Add server-specific post-invoke hook |
+| `Enabled(bool)` | Enable/disable the server |
+| `Build()` | Return to proxy builder |
+
+### Hooks and Interceptors
+
+The SDK provides lambda-based hooks for easy inline configuration:
+
+```csharp
+proxy
+    // Global logging hook
+    .OnPreInvoke(ctx =>
+    {
+        Console.WriteLine($"Calling: {ctx.Data.Name} on {ctx.ServerName}");
+        ctx.Items["startTime"] = Stopwatch.StartNew();
+        return ValueTask.CompletedTask;
+    })
+    // Global timing hook
+    .OnPostInvoke((ctx, result) =>
+    {
+        var sw = (Stopwatch)ctx.Items["startTime"];
+        Console.WriteLine($"Completed in {sw.ElapsedMilliseconds}ms");
+        return ValueTask.FromResult(result);
+    })
+    // Tool list interceptor
+    .InterceptTools(tools => tools
+        .Where(t => !t.Tool.Name.Contains("deprecated")))
+    // Tool call interceptor
+    .InterceptToolCalls((context, ct) =>
+    {
+        if (context.ToolName == "proxy_status")
+        {
+            return ValueTask.FromResult<CallToolResult?>(new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = "Healthy" }]
+            });
+        }
+        return ValueTask.FromResult<CallToolResult?>(null);
+    });
+```
+
+### Virtual Tools
+
+Create tools that are handled directly by the proxy:
+
+```csharp
+proxy.AddTool(
+    name: "proxy_info",
+    description: "Get proxy information",
+    handler: (request, ct) => ValueTask.FromResult(new CallToolResult
+    {
+        Content = [new TextContentBlock { Text = "MCP Proxy v1.0.0" }]
+    }));
+
+// With full input schema
+proxy.AddVirtualTool(
+    new Tool
+    {
+        Name = "calculate",
+        Description = "Evaluate math expressions",
+        InputSchema = new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["expression"] = new JsonObject { ["type"] = "string" }
+            }
+        }
+    },
+    handler: (request, ct) =>
+    {
+        var expr = request.Arguments?["expression"]?.ToString();
+        return ValueTask.FromResult(new CallToolResult
+        {
+            Content = [new TextContentBlock { Text = $"Result: {Evaluate(expr)}" }]
+        });
+    });
+```
+
+### Tool Modification
+
+Modify, rename, or remove tools from the aggregated list:
+
+```csharp
+proxy
+    // Rename tools
+    .RenameTool("filesystem_read_file", "read")
+    // Remove by pattern
+    .RemoveToolsByPattern("internal_*", "*_debug")
+    // Remove by predicate
+    .RemoveTools((tool, server) => tool.Name.StartsWith("admin_"))
+    // Modify tools
+    .ModifyTools(
+        predicate: (tool, _) => true,
+        modifier: tool => new Tool
+        {
+            Name = tool.Name,
+            Description = $"[Proxied] {tool.Description}",
+            InputSchema = tool.InputSchema
+        });
+```
+
+### Combining SDK with JSON Configuration
+
+SDK settings take precedence over JSON configuration:
+
+```csharp
+proxy
+    .WithConfigurationFile("mcp-proxy.json")  // Load base config
+    .AddStdioServer("custom", "my-server")    // Add SDK-only server
+    .Build();
+```
+
+### SDK Samples
+
+See the `/samples` directory for complete examples:
+
+- **[11-sdk-basic](samples/11-sdk-basic)** - Basic SDK usage and DI integration
+- **[12-sdk-hooks-interceptors](samples/12-sdk-hooks-interceptors)** - Hooks, interceptors, logging
+- **[13-sdk-virtual-tools](samples/13-sdk-virtual-tools)** - Virtual tools and tool modification
+
+### Low-Level API
+
+For advanced scenarios, you can use the underlying classes directly:
 
 ```csharp
 using McpProxy.Core.Configuration;
@@ -621,26 +832,19 @@ using Microsoft.Extensions.Logging;
 // Load configuration
 var config = await ConfigurationLoader.LoadAsync("mcp-proxy.json");
 
-// Create loggers (using your logging factory)
+// Create loggers
 using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
 var clientManagerLogger = loggerFactory.CreateLogger<McpClientManager>();
 var proxyServerLogger = loggerFactory.CreateLogger<McpProxyServer>();
 
-// Create client manager
+// Create and initialize client manager
 var clientManager = new McpClientManager(clientManagerLogger);
-
-// Initialize connections to backend servers
 await clientManager.InitializeAsync(config, cancellationToken);
 
 // Create proxy server
-var proxyServer = new McpProxyServer(
-    proxyServerLogger,
-    clientManager,
-    config
-);
+var proxyServer = new McpProxyServer(proxyServerLogger, clientManager, config);
 
-// Use the proxy server to handle MCP requests
-// These methods take RequestContext<T> from the MCP server infrastructure
+// Use the proxy server
 var tools = await proxyServer.ListToolsCoreAsync(cancellationToken);
 var result = await proxyServer.CallToolCoreAsync(callToolParams, cancellationToken);
 ```

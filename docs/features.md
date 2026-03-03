@@ -680,10 +680,10 @@ Hooks can share data through the `HookContext`:
 
 ```csharp
 // In pre-invoke hook
-context.Properties["startTime"] = DateTime.UtcNow;
+context.Items["startTime"] = DateTime.UtcNow;
 
 // In post-invoke hook
-var startTime = (DateTime)context.Properties["startTime"];
+var startTime = (DateTime)context.Items["startTime"];
 var duration = DateTime.UtcNow - startTime;
 ```
 
@@ -696,23 +696,20 @@ public class ValidationHook : IPreInvokeHook
 {
     public int Priority => 0;
 
-    public Task<HookResult> OnPreInvokeAsync(
-        HookContext context,
-        CancellationToken cancellationToken)
+    public ValueTask OnPreInvokeAsync(HookContext<CallToolRequestParams> context)
     {
-        var args = context.Arguments;
+        var args = context.Request.Arguments;
         
         // Validate arguments
-        if (args.TryGetValue("path", out var path))
+        if (args is not null && args.TryGetValue("path", out var path))
         {
-            if (path.ToString().Contains(".."))
+            if (path.ToString()?.Contains("..") == true)
             {
-                return Task.FromResult(HookResult.Reject(
-                    "Path traversal not allowed"));
+                throw new InvalidOperationException("Path traversal not allowed");
             }
         }
         
-        return Task.FromResult(HookResult.Continue());
+        return ValueTask.CompletedTask;
     }
 }
 ```
@@ -720,9 +717,9 @@ public class ValidationHook : IPreInvokeHook
 Register custom hooks with the `HookFactory`:
 
 ```csharp
-var hookFactory = new HookFactory();
+var hookFactory = new HookFactory(loggerFactory, memoryCache, metrics);
 hookFactory.RegisterHookType("validation", 
-    config => new ValidationHook());
+    (definition, factory) => new ValidationHook());
 ```
 
 ### Practical Examples
@@ -896,6 +893,13 @@ This configuration provides:
 
 For hands-on examples of these features, see the sample projects:
 
+### JSON Configuration Samples
+
 - **[03-tool-filtering](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/03-tool-filtering)** - Allowlist, denylist, and regex filtering examples
 - **[06-hooks](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/06-hooks)** - Logging, rate limiting, audit, and content filtering hooks
 - **[10-enterprise-complete](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/10-enterprise-complete)** - Full enterprise configuration with all security features
+
+### SDK/Programmatic Samples
+
+- **[12-sdk-hooks-interceptors](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/12-sdk-hooks-interceptors)** - Code-based hooks and interceptors
+- **[13-sdk-virtual-tools](https://github.com/MoaidHathot/mcp-proxy/tree/main/samples/13-sdk-virtual-tools)** - Tool filtering and modification via code
