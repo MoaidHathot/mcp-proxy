@@ -1,6 +1,7 @@
 using System.CommandLine;
 using McpProxy.Core.Authentication;
 using McpProxy.Core.Configuration;
+using McpProxy.Core.Debugging;
 using McpProxy.Core.Hooks;
 using McpProxy.Core.Logging;
 using McpProxy.Core.Proxy;
@@ -197,6 +198,12 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
     // Map OAuth metadata discovery endpoints (RFC 8414) for MCP authentication
     app.MapOAuthMetadata(configuration.Proxy.Authentication);
 
+    // Map debug health endpoint (localhost-only, HTTP mode only)
+    if (configuration.Proxy.Debug.HealthEndpoint)
+    {
+        MapDebugHealthEndpoint(app, logger, configuration.Proxy.Debug.HealthEndpointPath);
+    }
+
     await app.RunAsync().ConfigureAwait(false);
 }
 
@@ -245,6 +252,36 @@ void MapSingleServerEndpoint(WebApplication app, string serverName, string route
         var result = await proxy.GetPromptAsync(request, context.RequestAborted).ConfigureAwait(false);
         return Results.Json(result);
     });
+}
+
+void MapDebugHealthEndpoint(WebApplication app, ILogger logger, string healthPath)
+{
+    app.MapGet(healthPath, async (HttpContext context) =>
+    {
+        // Localhost-only check
+        var remoteIp = context.Connection.RemoteIpAddress;
+        if (remoteIp is null || !System.Net.IPAddress.IsLoopback(remoteIp))
+        {
+            context.Response.StatusCode = 403;
+            return Results.Json(new { error = "Forbidden", message = "Debug health endpoint is only accessible from localhost" });
+        }
+
+        var healthTracker = app.Services.GetRequiredService<IHealthTracker>();
+        var status = await healthTracker.GetHealthStatusAsync(context.RequestAborted).ConfigureAwait(false);
+        
+        // Set appropriate status code based on health
+        context.Response.StatusCode = status.Status switch
+        {
+            HealthStatus.Healthy => 200,
+            HealthStatus.Degraded => 200,
+            HealthStatus.Unhealthy => 503,
+            _ => 200
+        };
+        
+        return Results.Json(status);
+    });
+    
+    ProxyLogger.DebugHealthEndpointEnabled(logger, healthPath);
 }
 
 void ConfigureSingleServerHookPipeline(
@@ -302,15 +339,27 @@ void RegisterCoreServices(IServiceCollection services, ProxyConfiguration config
     services.AddSingleton(configuration);
     services.AddSingleton<ProxyClientHandlers>();
     services.AddSingleton<NotificationForwarder>();
+    
+    // Register debugging services
+    RegisterDebuggingServices(services, configuration);
+    
     services.AddSingleton<McpClientManager>(sp =>
     {
         var logger = sp.GetRequiredService<ILogger<McpClientManager>>();
         var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
         var proxyClientHandlers = sp.GetRequiredService<ProxyClientHandlers>();
         var notificationForwarder = sp.GetRequiredService<NotificationForwarder>();
-        return new McpClientManager(logger, loggerFactory, proxyClientHandlers, notificationForwarder);
+        var healthTracker = sp.GetService<IHealthTracker>();
+        return new McpClientManager(logger, loggerFactory, proxyClientHandlers, notificationForwarder, healthTracker);
     });
-    services.AddSingleton<HookFactory>();
+    services.AddSingleton<HookFactory>(sp =>
+    {
+        var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+        var memoryCache = sp.GetService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
+        var metrics = sp.GetService<ProxyMetrics>();
+        var requestDumper = sp.GetService<IRequestDumper>();
+        return new HookFactory(loggerFactory, memoryCache, metrics, requestDumper);
+    });
     services.AddSingleton<McpProxyServer>();
     
     // Add telemetry services
@@ -338,6 +387,45 @@ void ConfigureServerOptions(McpServerOptions options, ProxyConfiguration configu
     {
         options.Capabilities ??= new ServerCapabilities();
         options.Capabilities.Experimental = serverCapabilities.Experimental;
+    }
+}
+
+void RegisterDebuggingServices(IServiceCollection services, ProxyConfiguration configuration)
+{
+    var debugConfig = configuration.Proxy.Debug;
+    
+    // Register hook tracer
+    if (debugConfig.HookTracing)
+    {
+        services.AddSingleton<IHookTracer, HookTracer>();
+    }
+    else
+    {
+        services.AddSingleton<IHookTracer>(NullHookTracer.Instance);
+    }
+    
+    // Register request dumper
+    if (debugConfig.Dump.Enabled)
+    {
+        services.AddSingleton<IRequestDumper>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<RequestDumper>>();
+            return new RequestDumper(logger, debugConfig.Dump);
+        });
+    }
+    else
+    {
+        services.AddSingleton<IRequestDumper>(NullRequestDumper.Instance);
+    }
+    
+    // Register health tracker
+    if (debugConfig.HealthEndpoint)
+    {
+        services.AddSingleton<IHealthTracker, HealthTracker>();
+    }
+    else
+    {
+        services.AddSingleton<IHealthTracker>(NullHealthTracker.Instance);
     }
 }
 

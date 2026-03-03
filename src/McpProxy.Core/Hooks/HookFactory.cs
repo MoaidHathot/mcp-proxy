@@ -1,6 +1,7 @@
 using System.Text.Json;
 using McpProxy.Abstractions;
 using McpProxy.Core.Configuration;
+using McpProxy.Core.Debugging;
 using McpProxy.Core.Hooks.BuiltIn;
 using McpProxy.Core.Telemetry;
 using Microsoft.Extensions.Caching.Memory;
@@ -16,6 +17,7 @@ public sealed class HookFactory
     private readonly ILoggerFactory _loggerFactory;
     private readonly IMemoryCache? _memoryCache;
     private readonly ProxyMetrics? _metrics;
+    private readonly IRequestDumper? _requestDumper;
     private readonly Dictionary<string, Func<HookDefinition, HookFactory, object>> _hookCreators;
 
     /// <summary>
@@ -24,11 +26,17 @@ public sealed class HookFactory
     /// <param name="loggerFactory">The logger factory for creating loggers.</param>
     /// <param name="memoryCache">Optional memory cache for rate limiting.</param>
     /// <param name="metrics">Optional proxy metrics for telemetry.</param>
-    public HookFactory(ILoggerFactory loggerFactory, IMemoryCache? memoryCache = null, ProxyMetrics? metrics = null)
+    /// <param name="requestDumper">Optional request dumper for debugging.</param>
+    public HookFactory(
+        ILoggerFactory loggerFactory,
+        IMemoryCache? memoryCache = null,
+        ProxyMetrics? metrics = null,
+        IRequestDumper? requestDumper = null)
     {
         _loggerFactory = loggerFactory;
         _memoryCache = memoryCache;
         _metrics = metrics;
+        _requestDumper = requestDumper;
         _hookCreators = new Dictionary<string, Func<HookDefinition, HookFactory, object>>(StringComparer.OrdinalIgnoreCase)
         {
             ["logging"] = CreateLoggingHook,
@@ -40,7 +48,8 @@ public sealed class HookFactory
             ["retry"] = CreateRetryHook,
             ["metrics"] = CreateMetricsHook,
             ["audit"] = CreateAuditHook,
-            ["contentFilter"] = CreateContentFilterHook
+            ["contentFilter"] = CreateContentFilterHook,
+            ["dump"] = CreateDumpHook
         };
     }
 
@@ -477,6 +486,35 @@ public sealed class HookFactory
         }
 
         return new ContentFilterHook(logger, config, factory._metrics);
+    }
+    #pragma warning restore CA1859
+
+    #pragma warning disable CA1859 // Use concrete types when possible for improved performance - required for dictionary storage
+    private static object CreateDumpHook(HookDefinition definition, HookFactory factory)
+    {
+        var dumper = factory._requestDumper;
+        if (dumper is null)
+        {
+            throw new InvalidOperationException("DumpHook requires IRequestDumper. Ensure request dumping is configured in debug settings.");
+        }
+
+        var dumpRequests = true;
+        var dumpResponses = true;
+
+        if (definition.Config is not null)
+        {
+            if (TryGetConfigValue<bool>(definition.Config, "dumpRequests", out var dumpReq))
+            {
+                dumpRequests = dumpReq;
+            }
+
+            if (TryGetConfigValue<bool>(definition.Config, "dumpResponses", out var dumpResp))
+            {
+                dumpResponses = dumpResp;
+            }
+        }
+
+        return new DumpHook(dumper, dumpRequests, dumpResponses);
     }
     #pragma warning restore CA1859
 

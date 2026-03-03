@@ -1,5 +1,6 @@
 using McpProxy.Core.Authentication;
 using McpProxy.Core.Configuration;
+using McpProxy.Core.Debugging;
 using McpProxy.Core.Logging;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
@@ -16,6 +17,7 @@ public sealed class McpClientManager : IAsyncDisposable
     private readonly ILoggerFactory _loggerFactory;
     private readonly ProxyClientHandlers? _proxyClientHandlers;
     private readonly NotificationForwarder? _notificationForwarder;
+    private readonly IHealthTracker _healthTracker;
     private readonly Dictionary<string, McpClientInfo> _clients = [];
     private readonly List<IDisposable> _disposables = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
@@ -29,22 +31,30 @@ public sealed class McpClientManager : IAsyncDisposable
     /// <param name="loggerFactory">The logger factory for creating typed loggers.</param>
     /// <param name="proxyClientHandlers">Optional handlers for forwarding sampling/elicitation/roots requests.</param>
     /// <param name="notificationForwarder">Optional notification forwarder for forwarding notifications to clients.</param>
+    /// <param name="healthTracker">Optional health tracker for monitoring backend health.</param>
     public McpClientManager(
         ILogger<McpClientManager> logger,
         ILoggerFactory loggerFactory,
         ProxyClientHandlers? proxyClientHandlers = null,
-        NotificationForwarder? notificationForwarder = null)
+        NotificationForwarder? notificationForwarder = null,
+        IHealthTracker? healthTracker = null)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
         _proxyClientHandlers = proxyClientHandlers;
         _notificationForwarder = notificationForwarder;
+        _healthTracker = healthTracker ?? NullHealthTracker.Instance;
     }
 
     /// <summary>
     /// Gets all connected clients.
     /// </summary>
     public IReadOnlyDictionary<string, McpClientInfo> Clients => _clients;
+
+    /// <summary>
+    /// Gets the health tracker.
+    /// </summary>
+    public IHealthTracker HealthTracker => _healthTracker;
 
     /// <summary>
     /// Initializes connections to all configured backend servers.
@@ -118,6 +128,9 @@ public sealed class McpClientManager : IAsyncDisposable
         RegisterNotificationHandlers(client, name);
 
         ProxyLogger.ConnectedToBackend(_logger, name);
+
+        // Record connection state in health tracker
+        _healthTracker.RecordConnectionState(name, connected: true);
 
         return new McpClientInfo
         {
@@ -337,10 +350,12 @@ public sealed class McpClientManager : IAsyncDisposable
             try
             {
                 await clientInfo.Client.DisposeAsync().ConfigureAwait(false);
+                _healthTracker.RecordConnectionState(name, connected: false);
                 ProxyLogger.BackendDisconnected(_logger, name);
             }
             catch (Exception ex)
             {
+                _healthTracker.RecordConnectionState(name, connected: false);
                 _logger.LogWarning(ex, "Error disposing client {ServerName}", name);
             }
         }

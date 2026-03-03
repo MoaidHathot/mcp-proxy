@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Advanced Features
-description: Telemetry, caching, notifications, and advanced MCP protocol support
+description: Telemetry, caching, notifications, debugging, and advanced MCP protocol support
 ---
 
 ## Advanced Features
@@ -15,6 +15,7 @@ MCP Proxy includes advanced features for production deployments and complex use 
 <li><a href="#caching">Caching</a></li>
 <li><a href="#notifications">Notifications</a></li>
 <li><a href="#resource-subscriptions">Resource Subscriptions</a></li>
+<li><a href="#debugging">Debugging</a></li>
 <li><a href="#advanced-mcp-protocol">Advanced MCP Protocol</a></li>
 </ul>
 </div>
@@ -402,6 +403,188 @@ If the connected client doesn't support a capability:
 
 This allows backend servers to handle unsupported capabilities gracefully.
 
+## Debugging
+
+MCP Proxy includes powerful debugging features for troubleshooting and development.
+
+### Configuration
+
+```json
+{
+  "proxy": {
+    "debug": {
+      "hookTracing": true,
+      "healthEndpoint": true,
+      "healthPath": "/debug/health",
+      "dump": {
+        "enabled": true,
+        "requests": true,
+        "responses": true,
+        "outputPath": "./dumps",
+        "format": "json",
+        "includeTimestamp": true
+      }
+    }
+  }
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `hookTracing` | bool | `false` | Enable detailed hook execution tracing |
+| `healthEndpoint` | bool | `false` | Enable `/debug/health` endpoint (HTTP mode only) |
+| `healthPath` | string | `/debug/health` | Path for the health endpoint |
+| `dump.enabled` | bool | `false` | Enable request/response dumping |
+| `dump.requests` | bool | `true` | Dump request payloads |
+| `dump.responses` | bool | `true` | Dump response payloads |
+| `dump.outputPath` | string | `./dumps` | Directory for dump files |
+| `dump.format` | string | `json` | Dump format (`json` or `text`) |
+| `dump.includeTimestamp` | bool | `true` | Include timestamp in filenames |
+
+### Hook Execution Tracing
+
+When `hookTracing` is enabled, detailed logs are emitted for each hook execution showing:
+
+- Hook name and type (pre/post invoke)
+- Priority order
+- Execution time in milliseconds
+- Success/failure status
+
+Example log output:
+
+```
+[DBG] Hook trace started for tool 'read_file' on server 'filesystem'
+[DBG] Hook 'LoggingHook' (Pre, priority 0) executing
+[DBG] Hook 'LoggingHook' completed in 0.52ms
+[DBG] Hook 'RateLimitingHook' (Pre, priority 1) executing
+[DBG] Hook 'RateLimitingHook' completed in 1.23ms
+[INF] Hook trace completed for 'read_file' on 'filesystem': 2 hooks (2 completed, 0 failed) in 1.75ms
+```
+
+### Request/Response Dumping
+
+The dump feature captures full request and response payloads to files for debugging.
+
+#### Using the Dump Hook
+
+Add the `dump` hook to any server's hooks configuration:
+
+```json
+{
+  "hooks": {
+    "preInvoke": [
+      {
+        "type": "dump",
+        "config": {
+          "dumpRequests": true,
+          "dumpResponses": false
+        }
+      }
+    ],
+    "postInvoke": [
+      {
+        "type": "dump",
+        "config": {
+          "dumpRequests": false,
+          "dumpResponses": true
+        }
+      }
+    ]
+  }
+}
+```
+
+#### Dump File Format
+
+Files are written with timestamped names:
+
+```
+dumps/
+├── filesystem_read_file_request_20250302_120000_123.json
+├── filesystem_read_file_response_20250302_120000_456.json
+└── memory_create_entity_request_20250302_120005_789.json
+```
+
+### Connection Health Dashboard
+
+The `/debug/health` endpoint provides real-time health status for the proxy and all backend connections.
+
+> **Security**: This endpoint is restricted to localhost access only. Requests from non-loopback IP addresses receive HTTP 403 Forbidden.
+
+#### Accessing the Endpoint
+
+```bash
+# Start proxy in HTTP mode
+mcp-proxy --transport http --config mcp-proxy.json --port 5000
+
+# Query health status
+curl http://localhost:5000/debug/health
+```
+
+#### Response Format
+
+```json
+{
+  "status": "healthy",
+  "uptimeSeconds": 3600.5,
+  "timestamp": "2025-03-02T12:00:00Z",
+  "version": "1.0.0",
+  "totalRequests": 1250,
+  "failedRequests": 3,
+  "activeConnections": 5,
+  "backends": {
+    "filesystem": {
+      "name": "filesystem",
+      "status": "healthy",
+      "connected": true,
+      "lastSuccessfulRequest": "2025-03-02T11:59:55Z",
+      "lastFailedRequest": null,
+      "totalRequests": 800,
+      "failedRequests": 1,
+      "averageResponseTimeMs": 15.5,
+      "toolCount": 5,
+      "promptCount": 0,
+      "resourceCount": 2,
+      "lastError": null,
+      "consecutiveFailures": 0
+    },
+    "memory": {
+      "name": "memory",
+      "status": "degraded",
+      "connected": true,
+      "lastSuccessfulRequest": "2025-03-02T11:58:00Z",
+      "lastFailedRequest": "2025-03-02T11:59:30Z",
+      "totalRequests": 450,
+      "failedRequests": 2,
+      "averageResponseTimeMs": 25.3,
+      "toolCount": 4,
+      "promptCount": 1,
+      "resourceCount": 0,
+      "lastError": "Connection timeout",
+      "consecutiveFailures": 2
+    }
+  }
+}
+```
+
+#### Health Status Values
+
+| Status | HTTP Code | Description |
+|--------|-----------|-------------|
+| `healthy` | 200 | All backends connected and responding normally |
+| `degraded` | 200 | Some backends experiencing issues but still functional |
+| `unhealthy` | 503 | Critical failures, most backends unavailable |
+| `unknown` | 200 | Unable to determine health status |
+
+#### Backend Status Determination
+
+| Consecutive Failures | Status |
+|---------------------|--------|
+| 0-1 | `healthy` |
+| 2-4 | `degraded` |
+| 5+ | `unhealthy` |
+| Not connected | `unknown` |
+
 ### Experimental Capabilities
 
 Both client and server can advertise experimental capabilities:
@@ -436,5 +619,6 @@ For hands-on examples of advanced features, see these sample projects:
 | [08-caching](../samples/08-caching/) | Tool caching configuration with TTL |
 | [09-telemetry](../samples/09-telemetry/) | OpenTelemetry metrics and tracing setup |
 | [12-sdk-hooks-interceptors](../samples/12-sdk-hooks-interceptors/) | Programmatic hooks and interceptors |
+| [14-debugging](../samples/14-debugging/) | Hook tracing, request dumping, and health endpoint |
 
-See the [samples README](../samples/README.md) for the complete list of 13 samples.
+See the [samples README](../samples/README.md) for the complete list of samples.

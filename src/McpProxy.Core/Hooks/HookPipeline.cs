@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using McpProxy.Abstractions;
+using McpProxy.Core.Debugging;
 using McpProxy.Core.Logging;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
@@ -11,6 +13,7 @@ namespace McpProxy.Core.Hooks;
 public sealed class HookPipeline
 {
     private readonly ILogger<HookPipeline> _logger;
+    private readonly IHookTracer _tracer;
     private readonly List<IPreInvokeHook> _preInvokeHooks = [];
     private readonly List<IPostInvokeHook> _postInvokeHooks = [];
 
@@ -18,9 +21,11 @@ public sealed class HookPipeline
     /// Initializes a new instance of <see cref="HookPipeline"/>.
     /// </summary>
     /// <param name="logger">The logger instance.</param>
-    public HookPipeline(ILogger<HookPipeline> logger)
+    /// <param name="tracer">Optional hook tracer for debugging. If null, tracing is disabled.</param>
+    public HookPipeline(ILogger<HookPipeline> logger, IHookTracer? tracer = null)
     {
         _logger = logger;
+        _tracer = tracer ?? NullHookTracer.Instance;
     }
 
     /// <summary>
@@ -67,18 +72,31 @@ public sealed class HookPipeline
 
         ProxyLogger.ExecutingPreInvokeHooks(_logger, _preInvokeHooks.Count, context.ToolName);
 
+        var traceContext = _tracer.BeginTrace(context.ToolName, context.ServerName);
+
         foreach (var hook in _preInvokeHooks)
         {
+            var hookName = hook.GetType().Name;
+            _tracer.RecordHookStart(traceContext, hookName, "PreInvoke", hook.Priority);
+            var stopwatch = Stopwatch.StartNew();
+
             try
             {
                 await hook.OnPreInvokeAsync(context).ConfigureAwait(false);
+                stopwatch.Stop();
+                _tracer.RecordHookComplete(traceContext, hookName, stopwatch.Elapsed);
             }
             catch (Exception ex)
             {
-                ProxyLogger.HookFailed(_logger, hook.GetType().Name, context.ToolName, ex);
+                stopwatch.Stop();
+                _tracer.RecordHookFailed(traceContext, hookName, ex);
+                ProxyLogger.HookFailed(_logger, hookName, context.ToolName, ex);
+                _tracer.EndTrace(traceContext);
                 throw;
             }
         }
+
+        _tracer.EndTrace(traceContext);
     }
 
     /// <summary>
@@ -98,19 +116,31 @@ public sealed class HookPipeline
 
         ProxyLogger.ExecutingPostInvokeHooks(_logger, _postInvokeHooks.Count, context.ToolName);
 
+        var traceContext = _tracer.BeginTrace(context.ToolName, context.ServerName);
+
         foreach (var hook in _postInvokeHooks)
         {
+            var hookName = hook.GetType().Name;
+            _tracer.RecordHookStart(traceContext, hookName, "PostInvoke", hook.Priority);
+            var stopwatch = Stopwatch.StartNew();
+
             try
             {
                 result = await hook.OnPostInvokeAsync(context, result).ConfigureAwait(false);
+                stopwatch.Stop();
+                _tracer.RecordHookComplete(traceContext, hookName, stopwatch.Elapsed);
             }
             catch (Exception ex)
             {
-                ProxyLogger.HookFailed(_logger, hook.GetType().Name, context.ToolName, ex);
+                stopwatch.Stop();
+                _tracer.RecordHookFailed(traceContext, hookName, ex);
+                ProxyLogger.HookFailed(_logger, hookName, context.ToolName, ex);
+                _tracer.EndTrace(traceContext);
                 throw;
             }
         }
 
+        _tracer.EndTrace(traceContext);
         return result;
     }
 

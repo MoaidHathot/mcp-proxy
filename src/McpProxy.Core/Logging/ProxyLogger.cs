@@ -335,4 +335,51 @@ public static partial class ProxyLogger
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Metrics recorded for tool '{ToolName}': duration={DurationMs}ms, success={Success}")]
     public static partial void MetricsRecorded(ILogger logger, string toolName, double durationMs, bool success);
+
+    // === Hook Tracing ===
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Hook trace started for tool '{ToolName}' on server '{ServerName}'")]
+    public static partial void HookTraceStarted(ILogger logger, string toolName, string serverName);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Hook '{HookName}' ({HookType}, priority {Priority}) executing")]
+    public static partial void HookExecuting(ILogger logger, string hookName, string hookType, int priority);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Hook '{HookName}' completed in {DurationMs:F2}ms")]
+    public static partial void HookCompleted(ILogger logger, string hookName, double durationMs);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Hook '{HookName}' failed: {ErrorType} - {ErrorMessage}")]
+    public static partial void HookTraceFailed(ILogger logger, string hookName, string errorType, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Hook trace completed for '{ToolName}' on '{ServerName}': {TotalHooks} hooks ({CompletedHooks} completed, {FailedHooks} failed) in {TotalDurationMs:F2}ms")]
+    public static partial void HookTraceSummary(ILogger logger, string toolName, string serverName, int totalHooks, int completedHooks, int failedHooks, double totalDurationMs);
+
+    // === Request/Response Dumping ===
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Dump written to file: {FilePath}")]
+    public static partial void DumpWrittenToFile(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[DUMP {Type}] Server: {ServerName}, Tool: {ToolName}\n{Content}")]
+    public static partial void DumpToConsole(ILogger logger, string type, string serverName, string toolName, string content);
+
+    // === Debug Health ===
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Debug health endpoint enabled at '{Path}' (localhost-only)")]
+    public static partial void DebugHealthEndpointEnabled(ILogger logger, string path);
+
+    // === Health Tracking ===
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Health recorded success for backend '{BackendName}': {ResponseTimeMs:F2}ms")]
+    public static partial void HealthRecordedSuccess(ILogger logger, string backendName, double responseTimeMs);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Health recorded failure for backend '{BackendName}': {ErrorMessage}")]
+    public static partial void HealthRecordedFailure(ILogger logger, string backendName, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Backend '{BackendName}' connected")]
+    public static partial void HealthBackendConnected(ILogger logger, string backendName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Backend '{BackendName}' disconnected")]
+    public static partial void HealthBackendDisconnected(ILogger logger, string backendName);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Backend '{BackendName}' capabilities recorded: {ToolCount} tools, {PromptCount} prompts, {ResourceCount} resources")]
+    public static partial void HealthRecordedCapabilities(ILogger logger, string backendName, int toolCount, int promptCount, int resourceCount);
 }

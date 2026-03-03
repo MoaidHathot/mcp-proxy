@@ -1,0 +1,99 @@
+{
+  "$schema": "../../mcp-proxy.schema.json",
+  "proxy": {
+    "serverInfo": {
+      "name": "Debugging Example",
+      "version": "1.0.0",
+      "instructions": "This proxy demonstrates debugging features: hook tracing, request/response dumping, and health endpoint."
+    },
+    "debug": {
+      "hookTracing": true,
+      "healthEndpoint": true,
+      "healthPath": "/debug/health",
+      "dump": {
+        "enabled": true,
+        "requests": true,
+        "responses": true,
+        "outputPath": "./dumps",
+        "format": "json",
+        "includeTimestamp": true
+      }
+    },
+    "logging": {
+      "logRequests": true,
+      "logResponses": true
+    }
+  },
+  "mcp": {
+    "filesystem": {
+      "type": "stdio",
+      "title": "Filesystem Server",
+      "description": "Provides file system access tools for debugging demonstration",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-filesystem", "."],
+      "enabled": true,
+      "hooks": {
+        "preInvoke": [
+          {
+            "type": "dump",
+            "config": {
+              "dumpRequests": true,
+              "dumpResponses": false
+            }
+          },
+          {
+            "type": "logging",
+            "config": {
+              "logLevel": "debug",
+              "logArguments": true
+            }
+          }
+        ],
+        "postInvoke": [
+          {
+            "type": "dump",
+            "config": {
+              "dumpRequests": false,
+              "dumpResponses": true
+            }
+          },
+          {
+            "type": "logging",
+            "config": {
+              "logLevel": "debug",
+              "logResult": true
+            }
+          }
+        ]
+      }
+    },
+    "memory": {
+      "type": "stdio",
+      "title": "Memory Server",
+      "description": "Knowledge graph storage with debugging enabled",
+      "command": "npx",
+      "arguments": ["-y", "@anthropic/mcp-server-memory"],
+      "enabled": true,
+      "hooks": {
+        "preInvoke": [
+          {
+            "type": "dump",
+            "config": {
+              "dumpRequests": true,
+              "dumpResponses": true
+            }
+          }
+        ],
+        "postInvoke": [
+          {
+            "type": "dump",
+            "config": {
+              "dumpRequests": true,
+              "dumpResponses": true
+            }
+          }
+        ]
+      }
+    }
+  }
+}

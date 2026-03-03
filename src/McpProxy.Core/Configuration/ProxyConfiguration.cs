@@ -57,6 +57,11 @@ public sealed class ProxySettings
     /// Gets or sets the telemetry configuration.
     /// </summary>
     public TelemetryConfiguration Telemetry { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the debug configuration.
+    /// </summary>
+    public DebugConfiguration Debug { get; set; } = new();
 }
 
 /// <summary>
@@ -468,4 +473,77 @@ public sealed class TracingConfiguration
     /// Gets or sets the OTLP endpoint for trace export.
     /// </summary>
     public string? OtlpEndpoint { get; set; }
+}
+
+/// <summary>
+/// Debug configuration for development and troubleshooting.
+/// </summary>
+public sealed class DebugConfiguration
+{
+    /// <summary>
+    /// Gets or sets whether hook execution tracing is enabled.
+    /// When enabled, detailed timing and execution information is logged for each hook.
+    /// </summary>
+    public bool HookTracing { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to include timing information in hook traces.
+    /// </summary>
+    public bool IncludeHookTiming { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether the health endpoint is enabled.
+    /// The health endpoint is localhost-only for security.
+    /// </summary>
+    public bool HealthEndpoint { get; set; }
+
+    /// <summary>
+    /// Gets or sets the path for the health endpoint.
+    /// </summary>
+    public string HealthEndpointPath { get; set; } = "/debug/health";
+
+    /// <summary>
+    /// Gets or sets the dump configuration for request/response dumping.
+    /// </summary>
+    public DumpConfiguration Dump { get; set; } = new();
+}
+
+/// <summary>
+/// Configuration for request/response dumping.
+/// </summary>
+public sealed class DumpConfiguration
+{
+    /// <summary>
+    /// Gets or sets whether request/response dumping is enabled.
+    /// </summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>
+    /// Gets or sets the output directory for dump files.
+    /// If null, dumps are written to the console.
+    /// </summary>
+    public string? OutputDirectory { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to pretty-print JSON output.
+    /// </summary>
+    public bool PrettyPrint { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the maximum payload size in KB.
+    /// Larger payloads are truncated with a marker.
+    /// </summary>
+    public int MaxPayloadSizeKb { get; set; } = 1024;
+
+    /// <summary>
+    /// Gets or sets server names to include in dumps.
+    /// If null or empty, all servers are included.
+    /// </summary>
+    public string[]? ServerFilter { get; set; }
+
+    /// <summary>
+    /// Gets or sets tool names to include in dumps.
+    /// If null or empty, all tools are included.
+    /// </summary>
+    public string[]? ToolFilter { get; set; }
 }
