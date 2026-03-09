@@ -350,7 +350,8 @@ void RegisterCoreServices(IServiceCollection services, ProxyConfiguration config
         var proxyClientHandlers = sp.GetRequiredService<ProxyClientHandlers>();
         var notificationForwarder = sp.GetRequiredService<NotificationForwarder>();
         var healthTracker = sp.GetService<IHealthTracker>();
-        return new McpClientManager(logger, loggerFactory, proxyClientHandlers, notificationForwarder, healthTracker);
+        var httpContextAccessor = sp.GetService<IHttpContextAccessor>();
+        return new McpClientManager(logger, loggerFactory, proxyClientHandlers, notificationForwarder, healthTracker, httpContextAccessor);
     });
     services.AddSingleton<HookFactory>(sp =>
     {

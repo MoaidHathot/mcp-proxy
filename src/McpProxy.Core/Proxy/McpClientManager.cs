@@ -2,6 +2,7 @@ using McpProxy.Core.Authentication;
 using McpProxy.Core.Configuration;
 using McpProxy.Core.Debugging;
 using McpProxy.Core.Logging;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -18,6 +19,7 @@ public sealed class McpClientManager : IAsyncDisposable
     private readonly ProxyClientHandlers? _proxyClientHandlers;
     private readonly NotificationForwarder? _notificationForwarder;
     private readonly IHealthTracker _healthTracker;
+    private readonly IHttpContextAccessor? _httpContextAccessor;
     private readonly Dictionary<string, McpClientInfo> _clients = [];
     private readonly List<IDisposable> _disposables = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
@@ -32,18 +34,21 @@ public sealed class McpClientManager : IAsyncDisposable
     /// <param name="proxyClientHandlers">Optional handlers for forwarding sampling/elicitation/roots requests.</param>
     /// <param name="notificationForwarder">Optional notification forwarder for forwarding notifications to clients.</param>
     /// <param name="healthTracker">Optional health tracker for monitoring backend health.</param>
+    /// <param name="httpContextAccessor">Optional HTTP context accessor for forwarding authorization headers.</param>
     public McpClientManager(
         ILogger<McpClientManager> logger,
         ILoggerFactory loggerFactory,
         ProxyClientHandlers? proxyClientHandlers = null,
         NotificationForwarder? notificationForwarder = null,
-        IHealthTracker? healthTracker = null)
+        IHealthTracker? healthTracker = null,
+        IHttpContextAccessor? httpContextAccessor = null)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
         _proxyClientHandlers = proxyClientHandlers;
         _notificationForwarder = notificationForwarder;
         _healthTracker = healthTracker ?? NullHealthTracker.Instance;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     /// <summary>
@@ -311,10 +316,16 @@ public sealed class McpClientManager : IAsyncDisposable
     }
 
     /// <summary>
-    /// Creates an HTTP client with Azure AD authentication.
+    /// Creates an HTTP client with authentication configured based on the auth type.
     /// </summary>
     private HttpClient CreateAuthenticatedHttpClient(BackendAuthConfiguration authConfig)
     {
+        // Handle ForwardAuthorization separately - it doesn't need Azure AD configuration
+        if (authConfig.Type == BackendAuthType.ForwardAuthorization)
+        {
+            return CreateForwardAuthorizationHttpClient();
+        }
+
         var credentialProvider = new AzureAdCredentialProvider(
             authConfig.AzureAd,
             authConfig.Type,
@@ -331,6 +342,26 @@ public sealed class McpClientManager : IAsyncDisposable
             credentialProvider,
             _loggerFactory.CreateLogger<AzureAdAuthorizationHandler>(),
             userTokenAccessor);
+
+        return new HttpClient(handler);
+    }
+
+    /// <summary>
+    /// Creates an HTTP client that forwards the incoming Authorization header.
+    /// </summary>
+    private HttpClient CreateForwardAuthorizationHttpClient()
+    {
+        if (_httpContextAccessor is null)
+        {
+            throw new InvalidOperationException(
+                "ForwardAuthorization requires IHttpContextAccessor. " +
+                "This typically means the proxy is running in stdio mode, which does not support " +
+                "HTTP header forwarding. Run the proxy in HTTP/SSE mode instead.");
+        }
+
+        var handler = new ForwardAuthorizationHandler(
+            _httpContextAccessor,
+            _loggerFactory.CreateLogger<ForwardAuthorizationHandler>());
 
         return new HttpClient(handler);
     }

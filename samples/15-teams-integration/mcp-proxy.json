@@ -7,7 +7,9 @@
       "instructions": "MCP Proxy with Teams caching, credential scanning, and virtual tools. Use teams_resolve to find chats/people before sending messages. Use teams_cache_status to check cache freshness."
     },
     "transport": {
-      "type": "stdio"
+      "type": "http",
+      "host": "localhost",
+      "port": 5100
     },
     "caching": {
       "tools": {
@@ -18,12 +20,14 @@
   },
   "mcp": {
     "teams": {
-      "type": "stdio",
-      "command": "npx",
-      "arguments": ["-y", "@example/mcp-server-msgraph"],
+      "type": "sse",
+      "url": "https://agent365.svc.cloud.microsoft/agents/tenants/${TENANT_ID}/servers/mcp_TeamsServer",
       "title": "Microsoft Teams",
       "toolPrefix": "teams",
-      "enabled": true
+      "enabled": true,
+      "auth": {
+        "type": "ForwardAuthorization"
+      }
     }
   },
   "teamsIntegration": {

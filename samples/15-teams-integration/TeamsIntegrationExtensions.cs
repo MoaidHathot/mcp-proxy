@@ -3,8 +3,6 @@ using McpProxy.Samples.TeamsIntegration.Cache;
 using McpProxy.Samples.TeamsIntegration.Hooks;
 using McpProxy.Samples.TeamsIntegration.Interceptors;
 using McpProxy.Samples.TeamsIntegration.VirtualTools;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 namespace McpProxy.Samples.TeamsIntegration;
 

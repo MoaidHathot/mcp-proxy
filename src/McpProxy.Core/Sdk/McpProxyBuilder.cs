@@ -366,6 +366,34 @@ internal sealed class ServerBuilder : IServerBuilder
         return this;
     }
 
+    /// <summary>
+    /// Configures backend authentication for this server (HTTP/SSE only).
+    /// </summary>
+    /// <param name="authType">The authentication type.</param>
+    /// <returns>The builder for chaining.</returns>
+    public IServerBuilder WithBackendAuth(BackendAuthType authType)
+    {
+        _state.Configuration.Auth ??= new BackendAuthConfiguration();
+        _state.Configuration.Auth.Type = authType;
+        return this;
+    }
+
+    /// <summary>
+    /// Configures Azure AD backend authentication for this server (HTTP/SSE only).
+    /// </summary>
+    /// <param name="authType">The Azure AD authentication type.</param>
+    /// <param name="configure">Action to configure Azure AD settings.</param>
+    /// <returns>The builder for chaining.</returns>
+    public IServerBuilder WithBackendAuth(BackendAuthType authType, Action<BackendAzureAdConfiguration> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        
+        _state.Configuration.Auth ??= new BackendAuthConfiguration();
+        _state.Configuration.Auth.Type = authType;
+        configure(_state.Configuration.Auth.AzureAd);
+        return this;
+    }
+
     /// <inheritdoc />
     public IMcpProxyBuilder Build()
     {

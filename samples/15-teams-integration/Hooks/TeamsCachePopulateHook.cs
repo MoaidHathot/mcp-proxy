@@ -2,7 +2,6 @@ using System.Text.Json;
 using McpProxy.Abstractions;
 using McpProxy.Samples.TeamsIntegration.Cache;
 using McpProxy.Samples.TeamsIntegration.Cache.Models;
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 
 namespace McpProxy.Samples.TeamsIntegration.Hooks;

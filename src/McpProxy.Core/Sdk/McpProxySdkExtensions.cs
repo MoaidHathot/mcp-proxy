@@ -1,6 +1,8 @@
 using McpProxy.Abstractions;
+using McpProxy.Core.Authentication;
 using McpProxy.Core.Configuration;
 using McpProxy.Core.Hooks;
+using McpProxy.Core.Logging;
 using McpProxy.Core.Proxy;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -104,6 +106,7 @@ public static class McpProxySdkExtensions
     private static IServiceCollection RegisterSdkServices(IServiceCollection services)
     {
         services.AddHttpContextAccessor();
+        services.AddHttpClient(); // Required for OAuth metadata probing
         services.AddSingleton<ProxyClientHandlers>();
         services.AddSingleton<NotificationForwarder>();
         services.AddSingleton<McpClientManager>(sp =>
@@ -112,7 +115,8 @@ public static class McpProxySdkExtensions
             var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
             var proxyClientHandlers = sp.GetRequiredService<ProxyClientHandlers>();
             var notificationForwarder = sp.GetRequiredService<NotificationForwarder>();
-            return new McpClientManager(logger, loggerFactory, proxyClientHandlers, notificationForwarder);
+            var httpContextAccessor = sp.GetService<IHttpContextAccessor>();
+            return new McpClientManager(logger, loggerFactory, proxyClientHandlers, notificationForwarder, httpContextAccessor: httpContextAccessor);
         });
         services.AddSingleton<HookFactory>();
         services.AddSingleton<SdkEnabledProxyServer>(sp =>
@@ -123,6 +127,10 @@ public static class McpProxySdkExtensions
             var httpContextAccessor = sp.GetService<IHttpContextAccessor>();
             return new SdkEnabledProxyServer(logger, clientManager, sdkConfig, null, httpContextAccessor);
         });
+
+        // Add OAuth metadata services
+        services.AddSingleton<IOAuthMetadataRegistry, OAuthMetadataRegistry>();
+        services.AddSingleton<IOAuthMetadataProbe, OAuthMetadataProbe>();
 
         // Add telemetry
         services.AddSingleton(sp =>
@@ -244,6 +252,9 @@ public static class McpProxySdkHostExtensions
         // Initialize backend connections
         await clientManager.InitializeAsync(sdkConfig.Configuration, cancellationToken).ConfigureAwait(false);
 
+        // Probe backends with ForwardAuthorization for OAuth metadata support
+        await ProbeOAuthBackendsAsync(host.Services, sdkConfig.Configuration, cancellationToken).ConfigureAwait(false);
+
         // Configure hook pipelines from SDK configuration
         foreach (var (serverName, serverState) in sdkConfig.ServerStates)
         {
@@ -286,6 +297,67 @@ public static class McpProxySdkHostExtensions
         }
     }
 
+    private static async Task ProbeOAuthBackendsAsync(
+        IServiceProvider services,
+        ProxyConfiguration config,
+        CancellationToken cancellationToken)
+    {
+        var probe = services.GetService<IOAuthMetadataProbe>();
+        var registry = services.GetService<IOAuthMetadataRegistry>();
+        var logger = services.GetService<ILogger<OAuthMetadataProbe>>();
+
+        if (probe is null || registry is null)
+        {
+            return;
+        }
+
+        // Find all SSE backends with ForwardAuthorization
+        var probeTasks = new List<(string ServerName, string BackendUrl, Task<OAuthProbeResult> ProbeTask)>();
+
+        foreach (var (serverName, serverConfig) in config.Mcp)
+        {
+            if (serverConfig.Type != ServerTransportType.Sse && serverConfig.Type != ServerTransportType.Http)
+            {
+                continue;
+            }
+
+            if (serverConfig.Auth?.Type != BackendAuthType.ForwardAuthorization)
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(serverConfig.Url))
+            {
+                continue;
+            }
+
+            probeTasks.Add((serverName, serverConfig.Url, probe.ProbeAsync(serverConfig.Url, cancellationToken)));
+        }
+
+        if (probeTasks.Count == 0)
+        {
+            return;
+        }
+
+        // Wait for all probes to complete
+        await Task.WhenAll(probeTasks.Select(p => p.ProbeTask)).ConfigureAwait(false);
+
+        // Register backends that support OAuth
+        foreach (var (serverName, backendUrl, probeTask) in probeTasks)
+        {
+            var result = await probeTask.ConfigureAwait(false);
+            if (result.SupportsOAuth)
+            {
+                registry.Register(serverName, backendUrl, result);
+
+                if (logger is not null)
+                {
+                    ProxyLogger.OAuthMetadataAutoConfigured(logger, serverName, backendUrl);
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// Initializes the MCP Proxy SDK for a WebApplication.
     /// </summary>
@@ -295,5 +367,58 @@ public static class McpProxySdkHostExtensions
     public static async Task InitializeMcpProxyAsync(this WebApplication app, CancellationToken cancellationToken = default)
     {
         await ((IHost)app).InitializeMcpProxyAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Adds OAuth metadata proxy middleware that automatically serves OAuth metadata from backends.
+    /// This should be called before MapMcp() in the middleware pipeline.
+    /// </summary>
+    /// <param name="app">The web application.</param>
+    /// <param name="cacheDuration">How long to cache OAuth metadata. Default is 15 minutes.</param>
+    /// <returns>The web application for chaining.</returns>
+    public static WebApplication UseOAuthMetadataProxy(this WebApplication app, TimeSpan? cacheDuration = null)
+    {
+        app.UseMiddleware<OAuthMetadataProxyMiddleware>(cacheDuration ?? TimeSpan.FromMinutes(15));
+        return app;
+    }
+
+    /// <summary>
+    /// Configures backend authentication for this server (HTTP/SSE only).
+    /// </summary>
+    /// <param name="builder">The server builder.</param>
+    /// <param name="authType">The authentication type.</param>
+    /// <returns>The builder for chaining.</returns>
+    public static IServerBuilder WithBackendAuth(this IServerBuilder builder, BackendAuthType authType)
+    {
+        if (builder is ServerBuilder serverBuilder)
+        {
+            return serverBuilder.WithBackendAuth(authType);
+        }
+
+        throw new InvalidOperationException(
+            $"WithBackendAuth is only supported on {nameof(ServerBuilder)}. " +
+            $"Actual type: {builder.GetType().Name}");
+    }
+
+    /// <summary>
+    /// Configures Azure AD backend authentication for this server (HTTP/SSE only).
+    /// </summary>
+    /// <param name="builder">The server builder.</param>
+    /// <param name="authType">The Azure AD authentication type.</param>
+    /// <param name="configure">Action to configure Azure AD settings.</param>
+    /// <returns>The builder for chaining.</returns>
+    public static IServerBuilder WithBackendAuth(
+        this IServerBuilder builder,
+        BackendAuthType authType,
+        Action<BackendAzureAdConfiguration> configure)
+    {
+        if (builder is ServerBuilder serverBuilder)
+        {
+            return serverBuilder.WithBackendAuth(authType, configure);
+        }
+
+        throw new InvalidOperationException(
+            $"WithBackendAuth is only supported on {nameof(ServerBuilder)}. " +
+            $"Actual type: {builder.GetType().Name}");
     }
 }

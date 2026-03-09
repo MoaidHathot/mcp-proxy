@@ -130,7 +130,14 @@ public enum BackendAuthType
     /// <summary>
     /// Azure AD authentication using managed identity.
     /// </summary>
-    AzureAdManagedIdentity
+    AzureAdManagedIdentity,
+
+    /// <summary>
+    /// Forward the incoming Authorization header from the client request to the backend.
+    /// This allows the proxy to pass through authentication without needing its own credentials.
+    /// Requires the proxy to be running in HTTP/SSE mode (not stdio).
+    /// </summary>
+    ForwardAuthorization
 }
 
 /// <summary>

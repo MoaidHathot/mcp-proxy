@@ -1,9 +1,6 @@
 using McpProxy.Core.Sdk;
 using McpProxy.Samples.TeamsIntegration;
 using McpProxy.Samples.TeamsIntegration.Cache;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Teams Integration Sample
@@ -17,13 +14,31 @@ using Microsoft.Extensions.Logging;
 // - Automatic pagination enforcement
 // - Message prefixing for AI-generated content
 // - Virtual tools for cache lookup, URL parsing, and validation
+//
+// This sample runs in HTTP/SSE mode to support forwarding Authorization
+// headers from VS Code to the real Microsoft Teams MCP Server.
 // ═══════════════════════════════════════════════════════════════════════════
 
-var builder = Host.CreateApplicationBuilder(args);
+// Get tenant ID from environment variable or command line
+var tenantId = Environment.GetEnvironmentVariable("TENANT_ID")
+    ?? args.FirstOrDefault(a => a.StartsWith("--tenant-id="))?.Split('=')[1]
+    ?? throw new InvalidOperationException(
+        "Tenant ID is required. Set TENANT_ID environment variable or pass --tenant-id=<your-tenant-id>");
+
+var port = int.TryParse(
+    Environment.GetEnvironmentVariable("PORT") ?? args.FirstOrDefault(a => a.StartsWith("--port="))?.Split('=')[1],
+    out var p) ? p : 5100;
+
+// Use WebApplication for HTTP mode (required for Authorization header forwarding)
+var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseUrls($"http://localhost:{port}");
 
 // Configure logging
 builder.Logging.AddConsole();
 builder.Logging.SetMinimumLevel(LogLevel.Information);
+
+// Add HTTP context accessor (required for ForwardAuthorization)
+builder.Services.AddHttpContextAccessor();
 
 // Add Teams integration services (for DI access to cache service)
 builder.Services.AddTeamsIntegration(options =>
@@ -56,20 +71,18 @@ builder.Services.AddMcpProxy(proxy =>
         "MCP Proxy with Teams caching, credential scanning, and virtual tools.");
 
     // ═══════════════════════════════════════════════════════════════════════
-    // Teams Integration Configuration
+    // Microsoft Teams MCP Server
     // ═══════════════════════════════════════════════════════════════════════
-    // Note: In a real application, you would call WithTeamsIntegration here
-    // after building the service provider. For this sample, we show the
-    // manual setup approach.
-
-    // Manual setup example (alternative to extension method):
-    // This shows what WithTeamsIntegration does internally
-
-    // Add a placeholder Teams MCP server (replace with actual Teams MCP server)
-    // proxy.AddStdioServer("teams", "npx", "-y", "@example/mcp-server-msgraph")
-    //     .WithTitle("Microsoft Teams")
-    //     .WithToolPrefix("teams")
-    //     .Build();
+    // This connects to the real Microsoft Teams MCP Server using SSE transport.
+    // The Authorization header from VS Code is forwarded to the backend server.
+    var teamsServerUrl = $"https://agent365.svc.cloud.microsoft/agents/tenants/{tenantId}/servers/mcp_TeamsServer";
+    
+    proxy.AddSseServer("teams", teamsServerUrl)
+        .WithTitle("Microsoft Teams")
+        .WithDescription("Microsoft Teams MCP Server for chat, messaging, and collaboration")
+        .WithToolPrefix("teams")
+        .WithBackendAuth(McpProxy.Core.Configuration.BackendAuthType.ForwardAuthorization)
+        .Build();
 
     // For demo purposes, add a simple status tool
     proxy.AddTool(
@@ -80,13 +93,16 @@ builder.Services.AddMcpProxy(proxy =>
             var status = new SampleStatus(
                 Status: "running",
                 Message: "Teams Integration Sample is operational",
+                TenantId: tenantId,
+                ProxyUrl: $"http://localhost:{port}/mcp",
                 Features:
                 [
                     "Automatic caching",
                     "Cache short-circuiting",
                     "Credential scanning",
                     "Pagination enforcement",
-                    "Virtual tools"
+                    "Virtual tools",
+                    "Authorization forwarding"
                 ]);
 
             return ValueTask.FromResult(new ModelContextProtocol.Protocol.CallToolResult
@@ -102,6 +118,11 @@ builder.Services.AddMcpProxy(proxy =>
             });
         });
 });
+
+// Configure MCP Server with HTTP transport
+builder.Services
+    .AddMcpServer()
+    .WithHttpTransport();
 
 // Build the application
 var app = builder.Build();
@@ -136,11 +157,15 @@ Console.WriteLine("Initializing MCP Proxy with Teams integration...");
 await app.InitializeMcpProxyAsync().ConfigureAwait(false);
 Console.WriteLine("MCP Proxy initialized!");
 Console.WriteLine();
+Console.WriteLine($"Tenant ID: {tenantId}");
+Console.WriteLine($"Proxy URL: http://localhost:{port}/mcp");
+Console.WriteLine();
 Console.WriteLine("Teams integration features enabled:");
 Console.WriteLine("  - Automatic caching of chats, teams, and people");
 Console.WriteLine("  - Cache short-circuiting for ListChats, ListTeams, etc.");
 Console.WriteLine("  - Credential scanning for outbound messages");
 Console.WriteLine("  - Automatic pagination (top=20) for list operations");
+Console.WriteLine("  - Authorization header forwarding to Teams MCP Server");
 Console.WriteLine();
 Console.WriteLine("Virtual tools available:");
 Console.WriteLine("  - teams_resolve: Resolve names to Teams entities");
@@ -155,6 +180,14 @@ Console.WriteLine("  - teams_validate_message: Check message for credentials");
 Console.WriteLine("  - teams_add_recent_contact: Add to recent contacts");
 Console.WriteLine("  - teams_get_recent_contacts: Get recent contacts list");
 Console.WriteLine();
+
+// Enable OAuth metadata proxy middleware
+// This auto-detects OAuth metadata endpoints on backends with ForwardAuthorization
+// and serves them at /.well-known/oauth-authorization-server and /.well-known/openid-configuration
+app.UseOAuthMetadataProxy(cacheDuration: TimeSpan.FromMinutes(15));
+
+// Map MCP endpoint
+app.MapMcp("/mcp");
 
 // Handle shutdown
 var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
@@ -173,4 +206,9 @@ await app.RunAsync().ConfigureAwait(false);
 /// <summary>
 /// Record for the sample status tool response.
 /// </summary>
-internal sealed record SampleStatus(string Status, string Message, List<string> Features);
+internal sealed record SampleStatus(
+    string Status,
+    string Message,
+    string TenantId,
+    string ProxyUrl,
+    List<string> Features);

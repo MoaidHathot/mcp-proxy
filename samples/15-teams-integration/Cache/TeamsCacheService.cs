@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using McpProxy.Samples.TeamsIntegration.Cache.Models;
-using Microsoft.Extensions.Logging;
 
 namespace McpProxy.Samples.TeamsIntegration.Cache;
 

@@ -382,4 +382,61 @@ public static partial class ProxyLogger
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Backend '{BackendName}' capabilities recorded: {ToolCount} tools, {PromptCount} prompts, {ResourceCount} resources")]
     public static partial void HealthRecordedCapabilities(ILogger logger, string backendName, int toolCount, int promptCount, int resourceCount);
+
+    // === Forward Authorization ===
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Forwarding Authorization header to backend")]
+    public static partial void ForwardAuthorizationHeaderAdded(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "No HTTP context available for authorization forwarding (stdio mode?)")]
+    public static partial void ForwardAuthorizationNoContext(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Authorization header present but empty, not forwarding")]
+    public static partial void ForwardAuthorizationHeaderEmpty(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "No Authorization header found in incoming request")]
+    public static partial void ForwardAuthorizationHeaderMissing(ILogger logger);
+
+    // === OAuth Metadata Proxy ===
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Proxied OAuth metadata from {TargetUrl}, status: {StatusCode}")]
+    public static partial void OAuthMetadataProxied(ILogger logger, string targetUrl, System.Net.HttpStatusCode statusCode);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to fetch OAuth metadata from {TargetUrl}")]
+    public static partial void OAuthMetadataFetchFailed(ILogger logger, string targetUrl, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Timeout fetching OAuth metadata from {TargetUrl}")]
+    public static partial void OAuthMetadataTimeout(ILogger logger, string targetUrl);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Mapped proxied OAuth metadata endpoints to backend: {BackendUrl}")]
+    public static partial void OAuthMetadataProxyMapped(ILogger logger, string backendUrl);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Mapped cached proxied OAuth metadata endpoints to backend: {BackendUrl} (cache: {CacheDuration})")]
+    public static partial void OAuthMetadataProxyCachedMapped(ILogger logger, string backendUrl, TimeSpan cacheDuration);
+
+    // === OAuth Metadata Probing ===
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Probing backend {BackendUrl} for OAuth metadata endpoints")]
+    public static partial void OAuthMetadataProbeStarting(ILogger logger, string backendUrl);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Backend {BackendUrl} supports OAuth: oauth-authorization-server={SupportsOAuth}, openid-configuration={SupportsOpenId}")]
+    public static partial void OAuthMetadataProbeSuccess(ILogger logger, string backendUrl, bool supportsOAuth, bool supportsOpenId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Backend {BackendUrl} does not support OAuth metadata endpoints")]
+    public static partial void OAuthMetadataProbeNoSupport(ILogger logger, string backendUrl);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Found OAuth endpoint {Path} at {TargetUrl}")]
+    public static partial void OAuthMetadataProbeEndpointFound(ILogger logger, string path, string targetUrl);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "OAuth endpoint {Path} not found at {TargetUrl} (status: {StatusCode})")]
+    public static partial void OAuthMetadataProbeEndpointNotFound(ILogger logger, string path, string targetUrl, int statusCode);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Error probing OAuth endpoint {Path} at {TargetUrl}")]
+    public static partial void OAuthMetadataProbeEndpointError(ILogger logger, string path, string targetUrl, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Timeout probing OAuth endpoint {Path} at {TargetUrl}")]
+    public static partial void OAuthMetadataProbeEndpointTimeout(ILogger logger, string path, string targetUrl);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Auto-configured OAuth metadata proxy for backend '{ServerName}' ({BackendUrl})")]
+    public static partial void OAuthMetadataAutoConfigured(ILogger logger, string serverName, string backendUrl);
 }

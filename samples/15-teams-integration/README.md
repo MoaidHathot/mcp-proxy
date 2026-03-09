@@ -191,12 +191,107 @@ Returns:
 
 ## Running the Sample
 
+### Prerequisites
+
+1. Your Azure AD tenant ID
+2. VS Code with the MCP extension (for authentication)
+
+### Step 1: Start the Proxy
+
 ```bash
 cd samples/15-teams-integration
+
+# Using environment variable
+$env:TENANT_ID = "your-tenant-id"
 dotnet run
+
+# Or using command line argument
+dotnet run -- --tenant-id=your-tenant-id
+
+# Optional: customize the port (default: 5100)
+dotnet run -- --tenant-id=your-tenant-id --port=5200
 ```
 
-The proxy will start and display available features and tools.
+The proxy will start at `http://localhost:5100/mcp` and display:
+- Tenant ID
+- Proxy URL
+- Available features and virtual tools
+
+### Step 2: Configure VS Code
+
+Create or update your VS Code `mcp.json` (typically at `.vscode/mcp.json` in your workspace):
+
+```json
+{
+  "servers": {
+    "teams-proxy": {
+      "type": "http",
+      "url": "http://localhost:5100/mcp"
+    }
+  }
+}
+```
+
+**Authentication Flow:**
+1. VS Code connects to the proxy at `http://localhost:5100/mcp`
+2. VS Code fetches `/.well-known/oauth-authorization-server` from the proxy
+3. The proxy forwards this request to the Teams MCP Server and returns the OAuth metadata
+4. VS Code uses the metadata to authenticate with Azure AD (browser popup)
+5. VS Code sends requests with the `Authorization: Bearer <token>` header
+6. The proxy forwards the Authorization header to the Teams MCP Server
+7. The Teams MCP Server authenticates using your token
+
+The proxy acts as a **transparent OAuth pass-through** - it proxies the OAuth discovery
+metadata from the backend Teams server, allowing VS Code to authenticate directly with
+Azure AD without any manual token management.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      VS Code / LLM                           │
+│                                                              │
+│  1. Fetches /.well-known/oauth-authorization-server         │
+│  2. Receives OAuth metadata (proxied from Teams Server)     │
+│  3. Authenticates with Azure AD (browser popup)             │
+│  4. Sends requests with Authorization header                │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ HTTP with Authorization header
+┌───────────────────────────▼─────────────────────────────────┐
+│              MCP Proxy (localhost:5100/mcp)                  │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │         OAuthMetadataProxyEndpoints                  │    │
+│  │    (proxies /.well-known/* from Teams Server)        │    │
+│  └─────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │         ForwardAuthorizationHandler                  │    │
+│  │    (captures incoming Authorization header)          │    │
+│  └─────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                   Virtual Tools                      │    │
+│  │  teams_resolve, teams_parse_url, teams_cache_*      │    │
+│  └─────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                Cache Interceptor                     │    │
+│  │        (Short-circuits when cache is fresh)          │    │
+│  └─────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                   Pre-Invoke Hooks                   │    │
+│  │  TeamsPaginationHook → TeamsCredentialScanHook →    │    │
+│  │  TeamsMessagePrefixHook                              │    │
+│  └─────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                  Post-Invoke Hooks                   │    │
+│  │         TeamsCachePopulateHook                       │    │
+│  └─────────────────────────────────────────────────────┘    │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ SSE with forwarded Authorization
+┌───────────────────────────▼─────────────────────────────────┐
+│                    Teams MCP Server                          │
+│    https://agent365.svc.cloud.microsoft/agents/tenants/     │
+│              {tenant_id}/servers/mcp_TeamsServer            │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## See Also
 

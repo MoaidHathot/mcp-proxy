@@ -1,6 +1,5 @@
 using System.Text.Json;
 using McpProxy.Abstractions;
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 
 namespace McpProxy.Samples.TeamsIntegration.Hooks;
