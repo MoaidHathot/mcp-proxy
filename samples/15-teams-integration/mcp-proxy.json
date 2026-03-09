@@ -1,0 +1,44 @@
+{
+  "$schema": "../mcp-proxy.schema.json",
+  "proxy": {
+    "serverInfo": {
+      "name": "Teams Integration Sample",
+      "version": "1.0.0",
+      "instructions": "MCP Proxy with Teams caching, credential scanning, and virtual tools. Use teams_resolve to find chats/people before sending messages. Use teams_cache_status to check cache freshness."
+    },
+    "transport": {
+      "type": "stdio"
+    },
+    "caching": {
+      "tools": {
+        "enabled": true,
+        "ttlSeconds": 300
+      }
+    }
+  },
+  "mcp": {
+    "teams": {
+      "type": "stdio",
+      "command": "npx",
+      "arguments": ["-y", "@example/mcp-server-msgraph"],
+      "title": "Microsoft Teams",
+      "toolPrefix": "teams",
+      "enabled": true
+    }
+  },
+  "teamsIntegration": {
+    "_comment": "These settings are applied via code, shown here for documentation",
+    "cacheFilePath": null,
+    "cacheTtlHours": 4,
+    "maxRecentContacts": 50,
+    "defaultPaginationLimit": 20,
+    "enableCredentialScanning": true,
+    "blockCredentials": true,
+    "enableMessagePrefix": false,
+    "messagePrefix": "[AI]",
+    "enableCachePopulation": true,
+    "enableCacheShortCircuit": true,
+    "enableAutoPagination": true,
+    "registerVirtualTools": true
+  }
+}
