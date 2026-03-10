@@ -2,6 +2,37 @@
 
 This sample demonstrates how to use MCP-Proxy's SDK features (hooks, interceptors, and virtual tools) to create a rich Microsoft Teams integration layer.
 
+## Authentication Modes
+
+This sample supports two authentication modes:
+
+| Mode | Transport | Auth Handling | Best For |
+|------|-----------|---------------|----------|
+| **forward-auth** (default) | HTTP/SSE | VS Code authenticates with Azure AD, proxy forwards auth header | Interactive use, user-specific permissions |
+| **proxy-auth** | stdio | Proxy authenticates with Azure AD using app credentials | Automated agents, scripts, simplified client setup |
+
+### Forward-Auth Mode (Default)
+
+```
+VS Code ──(HTTP + OAuth)──> Proxy ──(forwarded auth)──> Teams MCP Server
+```
+
+- VS Code handles Azure AD authentication (browser popup)
+- Proxy forwards the `Authorization` header to Teams MCP Server
+- Each user authenticates with their own credentials
+- User-specific permissions and data access
+
+### Proxy-Auth Mode
+
+```
+Client ──(stdio, no auth)──> Proxy ──(Azure AD app auth)──> Teams MCP Server
+```
+
+- Proxy authenticates using Azure AD Client Credentials flow
+- Clients connect via stdio without any authentication
+- Single app identity for all requests
+- Simpler client configuration, suitable for automation
+
 ## Features
 
 ### Automatic Caching
@@ -32,64 +63,110 @@ This sample demonstrates how to use MCP-Proxy's SDK features (hooks, interceptor
 - **teams_parse_url** - Extract IDs from Teams URLs
 - **teams_validate_message** - Pre-send credential check
 
-## Project Structure
+## Running the Sample
 
-```
-15-teams-integration/
-├── Cache/
-│   ├── Models/
-│   │   └── CacheModels.cs      # Cache entity records
-│   ├── ITeamsCacheService.cs   # Cache service interface
-│   └── TeamsCacheService.cs    # Thread-safe implementation
-├── Hooks/
-│   ├── TeamsPaginationHook.cs      # Auto-pagination
-│   ├── TeamsCredentialScanHook.cs  # Security scanning
-│   ├── TeamsMessagePrefixHook.cs   # Message prefixing
-│   └── TeamsCachePopulateHook.cs   # Auto-cache population
-├── Interceptors/
-│   └── TeamsCacheInterceptor.cs    # Cache short-circuiting
-├── Utilities/
-│   ├── CredentialScanner.cs    # Regex-based credential detection
-│   └── TeamsUrlParser.cs       # Teams URL parsing
-├── VirtualTools/
-│   └── TeamsVirtualTools.cs    # All virtual tool definitions
-├── TeamsIntegrationOptions.cs  # Configuration options
-├── TeamsIntegrationExtensions.cs # SDK extension method
-├── Program.cs                  # Application entry point
-├── mcp-proxy.json             # Sample configuration
-├── SKILL.md                   # LLM guidance document
-└── README.md                  # This file
+### Prerequisites
+
+1. Your Azure AD tenant ID
+2. For **forward-auth mode**: VS Code with the MCP extension
+3. For **proxy-auth mode**: An Azure AD app registration with client credentials
+
+### Forward-Auth Mode (Default)
+
+This mode requires VS Code to handle OAuth authentication.
+
+```bash
+cd samples/15-teams-integration
+
+# Using environment variables
+$env:TENANT_ID = "your-tenant-id"
+dotnet run
+
+# Or using command line arguments
+dotnet run -- --tenant-id=your-tenant-id
+
+# Optional: customize the port (default: 5100)
+dotnet run -- --tenant-id=your-tenant-id --port=5200
 ```
 
-## Usage
+**VS Code Configuration** (`.vscode/mcp.json`):
 
-### SDK-Style (Recommended)
-
-```csharp
-builder.Services.AddMcpProxy(proxy =>
+```json
 {
-    proxy.WithServerInfo("My App", "1.0.0");
-
-    // Add your Teams MCP server
-    proxy.AddStdioServer("teams", "npx", "-y", "@example/mcp-server-msgraph")
-        .WithToolPrefix("teams")
-        .Build();
-});
-
-// After building the host
-var app = builder.Build();
-var proxyBuilder = app.Services.GetRequiredService<IMcpProxyBuilder>();
-
-proxyBuilder.WithTeamsIntegration(app.Services, options =>
-{
-    options.CacheTtl = TimeSpan.FromHours(4);
-    options.EnableCredentialScanning = true;
-    options.EnableCacheShortCircuit = true;
-    options.EnableAutoPagination = true;
-});
+  "servers": {
+    "teams-proxy": {
+      "type": "http",
+      "url": "http://localhost:5100/mcp"
+    }
+  }
+}
 ```
 
-### Configuration Options
+### Proxy-Auth Mode
+
+This mode uses Azure AD Client Credentials flow - the proxy authenticates with an app identity.
+
+#### Azure AD App Setup
+
+1. Register an app in Azure AD ([Azure Portal](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade))
+2. Create a client secret (Certificates & secrets → New client secret)
+3. Grant API permissions:
+   - Microsoft Graph → Application permissions → relevant permissions for Teams
+   - Admin consent may be required
+4. Note the Application (client) ID and tenant ID
+
+#### Running
+
+```bash
+cd samples/15-teams-integration
+
+# Using environment variables (recommended)
+$env:TENANT_ID = "your-tenant-id"
+$env:AUTH_MODE = "proxy-auth"
+$env:AZURE_CLIENT_ID = "your-app-client-id"
+$env:AZURE_CLIENT_SECRET = "your-client-secret"
+dotnet run
+
+# Or using command line arguments
+dotnet run -- --auth-mode=proxy-auth --tenant-id=your-tenant-id --client-id=your-app-id --client-secret=your-secret
+
+# Optional: customize scopes (default: https://graph.microsoft.com/.default)
+$env:AZURE_SCOPES = "api://your-api/.default"
+dotnet run
+```
+
+**VS Code Configuration** (`.vscode/mcp.json`):
+
+```json
+{
+  "servers": {
+    "teams-proxy": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": ["run", "--project", "path/to/samples/15-teams-integration"],
+      "env": {
+        "TENANT_ID": "your-tenant-id",
+        "AUTH_MODE": "proxy-auth",
+        "AZURE_CLIENT_ID": "your-app-client-id",
+        "AZURE_CLIENT_SECRET": "your-client-secret"
+      }
+    }
+  }
+}
+```
+
+## Environment Variables
+
+| Variable | Required | Mode | Description |
+|----------|----------|------|-------------|
+| `TENANT_ID` | Yes | Both | Azure AD tenant ID |
+| `AUTH_MODE` | No | Both | `forward-auth` (default) or `proxy-auth` |
+| `PORT` | No | forward-auth | HTTP port (default: 5100) |
+| `AZURE_CLIENT_ID` | Yes | proxy-auth | App registration client ID |
+| `AZURE_CLIENT_SECRET` | Yes | proxy-auth | App registration client secret |
+| `AZURE_SCOPES` | No | proxy-auth | Comma-separated scopes (default: `https://graph.microsoft.com/.default`) |
+
+## Configuration Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -127,15 +204,6 @@ Extract IDs from Teams URLs.
 }
 ```
 
-Returns:
-```json
-{
-  "success": true,
-  "type": "Chat",
-  "chatId": "19:abc...@thread.v2"
-}
-```
-
 ### teams_validate_message
 Pre-check message for credentials.
 
@@ -145,107 +213,9 @@ Pre-check message for credentials.
 }
 ```
 
-Returns:
-```json
-{
-  "safe": false,
-  "hasCredentials": true,
-  "detectedTypes": ["API key"],
-  "recommendation": "Do not send this message. Remove sensitive data first."
-}
-```
-
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         LLM/Agent                           │
-└───────────────────────────┬─────────────────────────────────┘
-                            │
-┌───────────────────────────▼─────────────────────────────────┐
-│                      MCP Proxy                               │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                   Virtual Tools                      │    │
-│  │  teams_resolve, teams_parse_url, teams_cache_*      │    │
-│  └─────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                Cache Interceptor                     │    │
-│  │        (Short-circuits when cache is fresh)          │    │
-│  └─────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                   Pre-Invoke Hooks                   │    │
-│  │  TeamsPaginationHook → TeamsCredentialScanHook →    │    │
-│  │  TeamsMessagePrefixHook                              │    │
-│  └─────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                  Post-Invoke Hooks                   │    │
-│  │         TeamsCachePopulateHook                       │    │
-│  └─────────────────────────────────────────────────────┘    │
-└───────────────────────────┬─────────────────────────────────┘
-                            │
-┌───────────────────────────▼─────────────────────────────────┐
-│                    Teams MCP Server                          │
-│              (Microsoft Graph API backend)                   │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Running the Sample
-
-### Prerequisites
-
-1. Your Azure AD tenant ID
-2. VS Code with the MCP extension (for authentication)
-
-### Step 1: Start the Proxy
-
-```bash
-cd samples/15-teams-integration
-
-# Using environment variable
-$env:TENANT_ID = "your-tenant-id"
-dotnet run
-
-# Or using command line argument
-dotnet run -- --tenant-id=your-tenant-id
-
-# Optional: customize the port (default: 5100)
-dotnet run -- --tenant-id=your-tenant-id --port=5200
-```
-
-The proxy will start at `http://localhost:5100/mcp` and display:
-- Tenant ID
-- Proxy URL
-- Available features and virtual tools
-
-### Step 2: Configure VS Code
-
-Create or update your VS Code `mcp.json` (typically at `.vscode/mcp.json` in your workspace):
-
-```json
-{
-  "servers": {
-    "teams-proxy": {
-      "type": "http",
-      "url": "http://localhost:5100/mcp"
-    }
-  }
-}
-```
-
-**Authentication Flow:**
-1. VS Code connects to the proxy at `http://localhost:5100/mcp`
-2. VS Code fetches `/.well-known/oauth-authorization-server` from the proxy
-3. The proxy forwards this request to the Teams MCP Server and returns the OAuth metadata
-4. VS Code uses the metadata to authenticate with Azure AD (browser popup)
-5. VS Code sends requests with the `Authorization: Bearer <token>` header
-6. The proxy forwards the Authorization header to the Teams MCP Server
-7. The Teams MCP Server authenticates using your token
-
-The proxy acts as a **transparent OAuth pass-through** - it proxies the OAuth discovery
-metadata from the backend Teams server, allowing VS Code to authenticate directly with
-Azure AD without any manual token management.
-
-### Architecture
+### Forward-Auth Mode
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -260,37 +230,75 @@ Azure AD without any manual token management.
 ┌───────────────────────────▼─────────────────────────────────┐
 │              MCP Proxy (localhost:5100/mcp)                  │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │         OAuthMetadataProxyEndpoints                  │    │
+│  │         OAuthMetadataProxyMiddleware                 │    │
 │  │    (proxies /.well-known/* from Teams Server)        │    │
 │  └─────────────────────────────────────────────────────┘    │
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │         ForwardAuthorizationHandler                  │    │
-│  │    (captures incoming Authorization header)          │    │
+│  │    (forwards incoming Authorization header)          │    │
 │  └─────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                   Virtual Tools                      │    │
-│  │  teams_resolve, teams_parse_url, teams_cache_*      │    │
-│  └─────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                Cache Interceptor                     │    │
-│  │        (Short-circuits when cache is fresh)          │    │
-│  └─────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                   Pre-Invoke Hooks                   │    │
-│  │  TeamsPaginationHook → TeamsCredentialScanHook →    │    │
-│  │  TeamsMessagePrefixHook                              │    │
-│  └─────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                  Post-Invoke Hooks                   │    │
-│  │         TeamsCachePopulateHook                       │    │
-│  └─────────────────────────────────────────────────────┘    │
+│                        ... hooks, cache, etc ...             │
 └───────────────────────────┬─────────────────────────────────┘
                             │ SSE with forwarded Authorization
 ┌───────────────────────────▼─────────────────────────────────┐
 │                    Teams MCP Server                          │
-│    https://agent365.svc.cloud.microsoft/agents/tenants/     │
-│              {tenant_id}/servers/mcp_TeamsServer            │
 └─────────────────────────────────────────────────────────────┘
+```
+
+### Proxy-Auth Mode
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      VS Code / LLM                           │
+│                                                              │
+│  Connects via stdio - no authentication required             │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ stdio (no auth)
+┌───────────────────────────▼─────────────────────────────────┐
+│                   MCP Proxy (stdio)                          │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │         AzureAdCredentialProvider                    │    │
+│  │    (acquires tokens using client credentials)        │    │
+│  └─────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │         AzureAdAuthorizationHandler                  │    │
+│  │    (adds Bearer token to outbound requests)          │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                        ... hooks, cache, etc ...             │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ SSE with Bearer token
+┌───────────────────────────▼─────────────────────────────────┐
+│                    Teams MCP Server                          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Project Structure
+
+```
+15-teams-integration/
+├── Cache/
+│   ├── Models/
+│   │   └── CacheModels.cs      # Cache entity records
+│   ├── ITeamsCacheService.cs   # Cache service interface
+│   └── TeamsCacheService.cs    # Thread-safe implementation
+├── Hooks/
+│   ├── TeamsPaginationHook.cs      # Auto-pagination
+│   ├── TeamsCredentialScanHook.cs  # Security scanning
+│   ├── TeamsMessagePrefixHook.cs   # Message prefixing
+│   └── TeamsCachePopulateHook.cs   # Auto-cache population
+├── Interceptors/
+│   └── TeamsCacheInterceptor.cs    # Cache short-circuiting
+├── Utilities/
+│   ├── CredentialScanner.cs    # Regex-based credential detection
+│   └── TeamsUrlParser.cs       # Teams URL parsing
+├── VirtualTools/
+│   └── TeamsVirtualTools.cs    # All virtual tool definitions
+├── TeamsIntegrationOptions.cs  # Configuration options
+├── TeamsIntegrationExtensions.cs # SDK extension method
+├── Program.cs                  # Application entry point
+├── mcp-proxy.json             # Sample configuration
+├── SKILL.md                   # LLM guidance document
+└── README.md                  # This file
 ```
 
 ## See Also
