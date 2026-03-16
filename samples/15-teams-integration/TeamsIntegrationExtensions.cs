@@ -24,17 +24,37 @@ public static class TeamsIntegrationExtensions
         IServiceProvider serviceProvider,
         Action<TeamsIntegrationOptions>? configure = null)
     {
-        ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(serviceProvider);
+
+        var loggerFactory = serviceProvider.GetService<ILoggerFactory>();
+        var cacheService = serviceProvider.GetService<ITeamsCacheService>();
+
+        return builder.WithTeamsIntegration(loggerFactory, cacheService, configure);
+    }
+
+    /// <summary>
+    /// Adds Teams integration features to the MCP Proxy builder using explicit dependencies.
+    /// Use this overload when a service provider is not yet available (e.g., during service registration).
+    /// </summary>
+    /// <param name="builder">The MCP Proxy builder.</param>
+    /// <param name="loggerFactory">Optional logger factory for creating loggers.</param>
+    /// <param name="cacheService">Optional cache service. If null, a default instance is created from options.</param>
+    /// <param name="configure">Optional configuration action.</param>
+    /// <returns>The builder for chaining.</returns>
+    public static IMcpProxyBuilder WithTeamsIntegration(
+        this IMcpProxyBuilder builder,
+        ILoggerFactory? loggerFactory = null,
+        ITeamsCacheService? cacheService = null,
+        Action<TeamsIntegrationOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
 
         var options = new TeamsIntegrationOptions();
         configure?.Invoke(options);
 
-        // Create cache service
-        var loggerFactory = serviceProvider.GetService<ILoggerFactory>();
+        // Use provided cache service or create a default one
         var cacheLogger = loggerFactory?.CreateLogger<TeamsCacheService>();
-
-        var cacheService = new TeamsCacheService(
+        cacheService ??= new TeamsCacheService(
             options.CacheFilePath,
             options.CacheTtl,
             options.MaxRecentContacts,

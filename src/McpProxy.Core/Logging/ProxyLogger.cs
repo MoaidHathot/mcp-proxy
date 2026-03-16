@@ -32,6 +32,9 @@ public static partial class ProxyLogger
     [LoggerMessage(Level = LogLevel.Information, Message = "Connected to backend server '{ServerName}'")]
     public static partial void ConnectedToBackend(ILogger logger, string serverName);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Backend server '{ServerName}' uses ForwardAuthorization; connection deferred until first request")]
+    public static partial void BackendConnectionDeferred(ILogger logger, string serverName);
+
     [LoggerMessage(Level = LogLevel.Error, Message = "Failed to connect to backend server '{ServerName}'")]
     public static partial void BackendConnectionFailed(ILogger logger, string serverName, Exception exception);
 
@@ -439,4 +442,23 @@ public static partial class ProxyLogger
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Auto-configured OAuth metadata proxy for backend '{ServerName}' ({BackendUrl})")]
     public static partial void OAuthMetadataAutoConfigured(ILogger logger, string serverName, string backendUrl);
+
+    // === RFC 9728 OAuth Protected Resource Metadata ===
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Backend {BackendUrl} supports RFC 9728 OAuth Protected Resource Metadata: authorization_servers={AuthorizationServers}")]
+    public static partial void OAuthProtectedResourceProbeSuccess(ILogger logger, string backendUrl, string authorizationServers);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Probing RFC 9728 protected resource metadata at {TargetUrl}")]
+    public static partial void OAuthProtectedResourceProbeStarting(ILogger logger, string targetUrl);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Serving RFC 9728 protected resource metadata for path '{Path}'")]
+    public static partial void ServingProtectedResourceMetadata(ILogger logger, string path);
+
+    // === Default Azure Credential ===
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Acquired token via DefaultAzureCredential for scope '{Scope}'")]
+    public static partial void DefaultAzureCredentialTokenAcquired(ILogger logger, string scope);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to acquire token via DefaultAzureCredential")]
+    public static partial void DefaultAzureCredentialTokenFailed(ILogger logger, Exception exception);
 }

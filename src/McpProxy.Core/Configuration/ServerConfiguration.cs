@@ -137,7 +137,15 @@ public enum BackendAuthType
     /// This allows the proxy to pass through authentication without needing its own credentials.
     /// Requires the proxy to be running in HTTP/SSE mode (not stdio).
     /// </summary>
-    ForwardAuthorization
+    ForwardAuthorization,
+
+    /// <summary>
+    /// Azure identity using <c>DefaultAzureCredential</c> from <c>Azure.Identity</c>.
+    /// Automatically discovers credentials from the local environment:
+    /// Azure CLI (<c>az login</c>), environment variables, managed identity, Visual Studio, etc.
+    /// Useful for local development scenarios where the developer is already authenticated.
+    /// </summary>
+    AzureDefaultCredential
 }
 
 /// <summary>
@@ -205,6 +213,19 @@ public sealed class BackendAzureAdConfiguration
     /// Leave null to use system-assigned managed identity.
     /// </summary>
     public string? ManagedIdentityClientId { get; set; }
+
+    /// <summary>
+    /// Gets or sets a pre-configured <see cref="Azure.Core.TokenCredential"/> to use for
+    /// <see cref="BackendAuthType.AzureDefaultCredential"/> authentication.
+    /// When set, this credential is used instead of creating a new <c>DefaultAzureCredential</c>.
+    /// This enables scenarios like <c>InteractiveBrowserCredential</c> for user-delegated flows
+    /// where the developer needs to consent to specific resource permissions.
+    /// </summary>
+    /// <remarks>
+    /// This property is not serializable — it is intended for programmatic configuration only.
+    /// </remarks>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public Azure.Core.TokenCredential? TokenCredential { get; set; }
 
     /// <summary>
     /// Gets the authority URL constructed from Instance and TenantId.

@@ -148,6 +148,10 @@ public sealed class SdkEnabledProxyServer
     /// </summary>
     public async ValueTask<ListToolsResult> ListToolsCoreAsync(CancellationToken cancellationToken)
     {
+        // Ensure deferred backends (e.g., ForwardAuthorization) are connected now that
+        // we have an HTTP context with an Authorization header from the client.
+        await _clientManager.EnsureDeferredClientsConnectedAsync(cancellationToken).ConfigureAwait(false);
+
         ProxyLogger.ListingTools(_logger, _clientManager.Clients.Count);
 
         var toolsWithServers = new List<ToolWithServer>();
@@ -232,6 +236,8 @@ public sealed class SdkEnabledProxyServer
         CallToolRequestParams request,
         CancellationToken cancellationToken)
     {
+        await _clientManager.EnsureDeferredClientsConnectedAsync(cancellationToken).ConfigureAwait(false);
+
         var toolName = request.Name;
 
         // Check for virtual tool first
@@ -404,6 +410,8 @@ public sealed class SdkEnabledProxyServer
         RequestContext<ListResourcesRequestParams> context,
         CancellationToken cancellationToken)
     {
+        await _clientManager.EnsureDeferredClientsConnectedAsync(cancellationToken).ConfigureAwait(false);
+
         ProxyLogger.ListingResources(_logger, _clientManager.Clients.Count);
 
         var allResources = new List<Resource>();
@@ -471,6 +479,8 @@ public sealed class SdkEnabledProxyServer
         RequestContext<ListPromptsRequestParams> context,
         CancellationToken cancellationToken)
     {
+        await _clientManager.EnsureDeferredClientsConnectedAsync(cancellationToken).ConfigureAwait(false);
+
         ProxyLogger.ListingPrompts(_logger, _clientManager.Clients.Count);
 
         var allPrompts = new List<Prompt>();

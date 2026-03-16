@@ -269,6 +269,84 @@ public class OAuthMetadataProbeTests
             // Assert
             result.SupportsOAuth.Should().BeFalse();
         }
+
+        [Fact]
+        public async Task Returns_Support_When_ProtectedResource_Returns_200()
+        {
+            // Arrange - simulates Teams backend that only supports RFC 9728
+            var protectedResourceMetadata = """{"resource":"https://example.com/api","authorization_servers":["https://login.microsoftonline.com/organizations/v2.0"]}""";
+            var factory = CreateHttpClientFactoryWithResponses(new Dictionary<string, (HttpStatusCode, string?)>
+            {
+                ["/.well-known/oauth-authorization-server"] = (HttpStatusCode.Unauthorized, null),
+                ["/.well-known/openid-configuration"] = (HttpStatusCode.Unauthorized, null),
+                ["/.well-known/oauth-protected-resource/"] = (HttpStatusCode.OK, protectedResourceMetadata)
+            });
+            var probe = new OAuthMetadataProbe(factory, _logger);
+
+            // Act
+            var result = await probe.ProbeAsync("https://example.com", TestContext.Current.CancellationToken);
+
+            // Assert
+            result.SupportsOAuth.Should().BeTrue();
+            result.SupportsOAuthProtectedResource.Should().BeTrue();
+            result.SupportsOAuthAuthorizationServer.Should().BeFalse();
+            result.SupportsOpenIdConfiguration.Should().BeFalse();
+            result.OAuthProtectedResourceMetadata.Should().Be(protectedResourceMetadata);
+        }
+
+        [Fact]
+        public async Task Constructs_Correct_RFC9728_URL_With_Path()
+        {
+            // Arrange - backend URL has a path component
+            // RFC 9728: https://host/path/to/resource -> https://host/.well-known/oauth-protected-resource/path/to/resource
+            string? probedUrl = null;
+            var protectedResourceMetadata = """{"resource":"https://example.com/api/v1","authorization_servers":["https://auth.example.com"]}""";
+
+            var factory = Substitute.For<IHttpClientFactory>();
+            var mockHandler = new MockHttpMessageHandler(req =>
+            {
+                var url = req.RequestUri?.ToString() ?? string.Empty;
+                if (url.Contains("/.well-known/oauth-protected-resource"))
+                {
+                    probedUrl = url;
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(protectedResourceMetadata, System.Text.Encoding.UTF8, "application/json")
+                    };
+                }
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            });
+            factory.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient(mockHandler));
+            var probe = new OAuthMetadataProbe(factory, _logger);
+
+            // Act
+            var result = await probe.ProbeAsync("https://example.com/api/v1", TestContext.Current.CancellationToken);
+
+            // Assert
+            probedUrl.Should().Be("https://example.com/.well-known/oauth-protected-resource/api/v1");
+            result.SupportsOAuthProtectedResource.Should().BeTrue();
+            result.OAuthProtectedResourceMetadata.Should().Be(protectedResourceMetadata);
+        }
+
+        [Fact]
+        public async Task Returns_NoSupport_When_All_Three_Endpoints_Fail()
+        {
+            // Arrange
+            var factory = CreateHttpClientFactoryWithResponses(new Dictionary<string, (HttpStatusCode, string?)>
+            {
+                ["/.well-known/oauth-authorization-server"] = (HttpStatusCode.NotFound, null),
+                ["/.well-known/openid-configuration"] = (HttpStatusCode.NotFound, null),
+                ["/.well-known/oauth-protected-resource/"] = (HttpStatusCode.NotFound, null)
+            });
+            var probe = new OAuthMetadataProbe(factory, _logger);
+
+            // Act
+            var result = await probe.ProbeAsync("https://example.com", TestContext.Current.CancellationToken);
+
+            // Assert
+            result.SupportsOAuth.Should().BeFalse();
+            result.SupportsOAuthProtectedResource.Should().BeFalse();
+        }
     }
 
     public class NoSupportTests : OAuthMetadataProbeTests

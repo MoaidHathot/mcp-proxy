@@ -21,6 +21,7 @@ public sealed class McpClientManager : IAsyncDisposable
     private readonly IHealthTracker _healthTracker;
     private readonly IHttpContextAccessor? _httpContextAccessor;
     private readonly Dictionary<string, McpClientInfo> _clients = [];
+    private readonly Dictionary<string, ServerConfiguration> _deferredClients = [];
     private readonly List<IDisposable> _disposables = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
     private ClientCapabilitySettings? _capabilitySettings;
@@ -63,6 +64,8 @@ public sealed class McpClientManager : IAsyncDisposable
 
     /// <summary>
     /// Initializes connections to all configured backend servers.
+    /// Backends using <see cref="BackendAuthType.ForwardAuthorization"/> are deferred
+    /// because no user token is available at startup; they connect lazily on first request.
     /// </summary>
     /// <param name="configuration">The proxy configuration.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -80,6 +83,15 @@ public sealed class McpClientManager : IAsyncDisposable
                     continue;
                 }
 
+                // ForwardAuthorization backends cannot connect at startup because there is
+                // no user token available. Store them for lazy connection on first request.
+                if (serverConfig.Auth?.Type == BackendAuthType.ForwardAuthorization)
+                {
+                    _deferredClients[name] = serverConfig;
+                    ProxyLogger.BackendConnectionDeferred(_logger, name);
+                    continue;
+                }
+
                 try
                 {
                     var client = await CreateClientAsync(name, serverConfig, cancellationToken).ConfigureAwait(false);
@@ -87,8 +99,12 @@ public sealed class McpClientManager : IAsyncDisposable
                 }
                 catch (Exception ex)
                 {
+                    // Log and defer — the backend will be retried on first client request.
+                    // This prevents startup crashes when a backend is temporarily unreachable
+                    // or when credentials need interactive consent.
                     ProxyLogger.BackendConnectionFailed(_logger, name, ex);
-                    throw;
+                    _deferredClients[name] = serverConfig;
+                    ProxyLogger.BackendConnectionDeferred(_logger, name);
                 }
             }
         }
@@ -97,6 +113,60 @@ public sealed class McpClientManager : IAsyncDisposable
             _lock.Release();
         }
     }
+
+    /// <summary>
+    /// Attempts to connect deferred clients. Should be called within request context
+    /// where an HTTP context (and Authorization header) may be available.
+    /// Connection failures are logged but not thrown — deferred clients remain in the
+    /// deferred list for future attempts when authentication becomes available.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task EnsureDeferredClientsConnectedAsync(CancellationToken cancellationToken = default)
+    {
+        if (_deferredClients.Count == 0)
+        {
+            return;
+        }
+
+        await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Copy keys to avoid modifying collection during iteration
+            var deferredNames = _deferredClients.Keys.ToList();
+            foreach (var name in deferredNames)
+            {
+                if (_clients.ContainsKey(name))
+                {
+                    _deferredClients.Remove(name);
+                    continue;
+                }
+
+                var serverConfig = _deferredClients[name];
+                try
+                {
+                    var client = await CreateClientAsync(name, serverConfig, cancellationToken).ConfigureAwait(false);
+                    _clients[name] = client;
+                    _deferredClients.Remove(name);
+                }
+                catch (Exception ex)
+                {
+                    // Log but do not throw — the backend likely requires authentication
+                    // that isn't available yet. The client stays deferred and will be
+                    // retried on subsequent requests once the caller authenticates.
+                    ProxyLogger.BackendConnectionFailed(_logger, name, ex);
+                }
+            }
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Gets whether there are deferred clients that have not yet connected.
+    /// </summary>
+    public bool HasDeferredClients => _deferredClients.Count > 0;
 
     /// <summary>
     /// Gets a client by server name.
@@ -326,6 +396,12 @@ public sealed class McpClientManager : IAsyncDisposable
             return CreateForwardAuthorizationHttpClient();
         }
 
+        // Handle DefaultAzureCredential separately - uses Azure.Identity instead of MSAL
+        if (authConfig.Type == BackendAuthType.AzureDefaultCredential)
+        {
+            return CreateDefaultAzureCredentialHttpClient(authConfig);
+        }
+
         var credentialProvider = new AzureAdCredentialProvider(
             authConfig.AzureAd,
             authConfig.Type,
@@ -362,6 +438,23 @@ public sealed class McpClientManager : IAsyncDisposable
         var handler = new ForwardAuthorizationHandler(
             _httpContextAccessor,
             _loggerFactory.CreateLogger<ForwardAuthorizationHandler>());
+
+        return new HttpClient(handler);
+    }
+
+    /// <summary>
+    /// Creates an HTTP client that acquires tokens via <see cref="DefaultAzureCredentialAuthHandler"/>.
+    /// If a pre-configured <see cref="Azure.Core.TokenCredential"/> is provided in the configuration,
+    /// it is used instead of creating a new <c>DefaultAzureCredential</c>.
+    /// </summary>
+    private HttpClient CreateDefaultAzureCredentialHttpClient(BackendAuthConfiguration authConfig)
+    {
+        var scopes = authConfig.AzureAd.Scopes ?? [".default"];
+        var credential = authConfig.AzureAd.TokenCredential;
+        var handler = new DefaultAzureCredentialAuthHandler(
+            scopes,
+            _loggerFactory.CreateLogger<DefaultAzureCredentialAuthHandler>(),
+            credential);
 
         return new HttpClient(handler);
     }

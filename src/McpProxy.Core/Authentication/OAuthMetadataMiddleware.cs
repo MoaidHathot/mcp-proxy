@@ -7,8 +7,13 @@ namespace McpProxy.Core.Authentication;
 
 /// <summary>
 /// Middleware that serves OAuth metadata proxied from backend servers.
-/// This middleware automatically handles /.well-known/oauth-authorization-server and 
-/// /.well-known/openid-configuration requests for backends that support OAuth.
+/// This middleware automatically handles:
+/// <list type="bullet">
+/// <item><c>/.well-known/oauth-authorization-server</c> (RFC 8414)</item>
+/// <item><c>/.well-known/openid-configuration</c> (OpenID Connect Discovery)</item>
+/// <item><c>/.well-known/oauth-protected-resource/...</c> (RFC 9728)</item>
+/// </list>
+/// requests for backends that support OAuth.
 /// </summary>
 public sealed class OAuthMetadataProxyMiddleware
 {
@@ -16,6 +21,8 @@ public sealed class OAuthMetadataProxyMiddleware
     private readonly ILogger<OAuthMetadataProxyMiddleware> _logger;
     private readonly ConcurrentDictionary<string, CachedMetadata> _cache = new();
     private readonly TimeSpan _cacheDuration;
+
+    private const string ProtectedResourcePrefix = "/.well-known/oauth-protected-resource";
 
     private static readonly string[] s_oAuthPaths =
     [
@@ -43,10 +50,24 @@ public sealed class OAuthMetadataProxyMiddleware
     {
         var path = context.Request.Path.Value;
 
-        // Check if this is an OAuth metadata request
-        if (path is not null && IsOAuthPath(path))
+        if (path is null)
         {
-            // Check if we have a backend configured for OAuth
+            await _next(context).ConfigureAwait(false);
+            return;
+        }
+
+        // Check if this is an RFC 9728 OAuth Protected Resource Metadata request
+        if (path.StartsWith(ProtectedResourcePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            if (await TryServeProtectedResourceMetadataAsync(context, registry, path).ConfigureAwait(false))
+            {
+                return;
+            }
+        }
+
+        // Check if this is a standard OAuth metadata request (RFC 8414 / OIDC)
+        if (IsOAuthPath(path))
+        {
             var backendUrl = registry.GetPrimaryOAuthBackendUrl();
             if (backendUrl is not null)
             {
@@ -56,6 +77,101 @@ public sealed class OAuthMetadataProxyMiddleware
         }
 
         await _next(context).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Attempts to serve RFC 9728 OAuth Protected Resource Metadata.
+    /// When VS Code connects to our proxy (e.g., at /mcp), it requests
+    /// /.well-known/oauth-protected-resource/mcp. This method intercepts that
+    /// and returns the protected resource metadata from the backend.
+    /// </summary>
+    private async Task<bool> TryServeProtectedResourceMetadataAsync(
+        HttpContext context,
+        IOAuthMetadataRegistry registry,
+        string path)
+    {
+        var probeResult = registry.GetPrimaryProbeResult();
+        if (probeResult is null || !probeResult.SupportsOAuthProtectedResource || probeResult.OAuthProtectedResourceMetadata is null)
+        {
+            return false;
+        }
+
+        ProxyLogger.ServingProtectedResourceMetadata(_logger, path);
+
+        var cacheKey = $"protected-resource:{path}";
+
+        // Check cache
+        if (_cache.TryGetValue(cacheKey, out var cached) && cached.ExpiresAt > DateTime.UtcNow)
+        {
+            context.Response.StatusCode = 200;
+            context.Response.ContentType = "application/json";
+            context.Response.Headers["X-Cache"] = "HIT";
+            await context.Response.WriteAsync(cached.Content, context.RequestAborted).ConfigureAwait(false);
+            return true;
+        }
+
+        // Rewrite the resource field in the metadata to point to our proxy instead of the backend.
+        // The client sees our proxy as the resource, so the `resource` field should be our URL.
+        var proxyBaseUrl = $"{context.Request.Scheme}://{context.Request.Host}";
+        var resourcePath = path[ProtectedResourcePrefix.Length..]; // e.g., "/mcp"
+        var proxyResourceUrl = $"{proxyBaseUrl}{resourcePath}";
+
+        var metadata = RewriteProtectedResourceMetadata(
+            probeResult.OAuthProtectedResourceMetadata,
+            proxyResourceUrl);
+
+        _cache[cacheKey] = new CachedMetadata
+        {
+            Content = metadata,
+            ContentType = "application/json",
+            StatusCode = 200,
+            ExpiresAt = DateTime.UtcNow.Add(_cacheDuration)
+        };
+
+        context.Response.StatusCode = 200;
+        context.Response.ContentType = "application/json";
+        context.Response.Headers["X-Cache"] = "MISS";
+        await context.Response.WriteAsync(metadata, context.RequestAborted).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
+    /// Rewrites the <c>resource</c> field in the protected resource metadata to point to the proxy.
+    /// This is necessary because the client sees our proxy as the resource, not the backend.
+    /// </summary>
+    private static string RewriteProtectedResourceMetadata(string originalMetadata, string proxyResourceUrl)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(originalMetadata);
+            using var stream = new System.IO.MemoryStream();
+            using (var writer = new System.Text.Json.Utf8JsonWriter(stream))
+            {
+                writer.WriteStartObject();
+
+                foreach (var property in doc.RootElement.EnumerateObject())
+                {
+                    if (property.NameEquals("resource"))
+                    {
+                        // Replace the resource URL with our proxy URL
+                        writer.WriteString("resource", proxyResourceUrl);
+                    }
+                    else
+                    {
+                        property.WriteTo(writer);
+                    }
+                }
+
+                writer.WriteEndObject();
+            }
+
+            return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // If we can't parse/rewrite, return the original
+            return originalMetadata;
+        }
     }
 
     private static bool IsOAuthPath(string path)
@@ -180,6 +296,12 @@ public interface IOAuthMetadataRegistry
     /// Gets all registered OAuth backends.
     /// </summary>
     IReadOnlyDictionary<string, OAuthBackendInfo> GetAllBackends();
+
+    /// <summary>
+    /// Gets the probe result for the primary OAuth backend (if any).
+    /// </summary>
+    /// <returns>The probe result, or null if no OAuth backends are registered.</returns>
+    OAuthProbeResult? GetPrimaryProbeResult();
 }
 
 /// <summary>
@@ -210,6 +332,7 @@ public sealed class OAuthMetadataRegistry : IOAuthMetadataRegistry
 {
     private readonly ConcurrentDictionary<string, OAuthBackendInfo> _backends = new();
     private string? _primaryBackendUrl;
+    private OAuthProbeResult? _primaryProbeResult;
     private readonly object _lock = new();
 
     /// <inheritdoc />
@@ -236,7 +359,11 @@ public sealed class OAuthMetadataRegistry : IOAuthMetadataRegistry
         lock (_lock)
         {
             // First backend to be registered becomes the primary
-            _primaryBackendUrl ??= backendUrl;
+            if (_primaryBackendUrl is null)
+            {
+                _primaryBackendUrl = backendUrl;
+                _primaryProbeResult = probeResult;
+            }
         }
     }
 
@@ -244,6 +371,12 @@ public sealed class OAuthMetadataRegistry : IOAuthMetadataRegistry
     public string? GetPrimaryOAuthBackendUrl()
     {
         return _primaryBackendUrl;
+    }
+
+    /// <inheritdoc />
+    public OAuthProbeResult? GetPrimaryProbeResult()
+    {
+        return _primaryProbeResult;
     }
 
     /// <inheritdoc />

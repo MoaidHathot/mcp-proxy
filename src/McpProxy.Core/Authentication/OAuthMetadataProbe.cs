@@ -39,6 +39,11 @@ public sealed class OAuthProbeResult
     public bool SupportsOpenIdConfiguration { get; init; }
 
     /// <summary>
+    /// Whether the backend supports /.well-known/oauth-protected-resource (RFC 9728).
+    /// </summary>
+    public bool SupportsOAuthProtectedResource { get; init; }
+
+    /// <summary>
     /// The cached OAuth authorization server metadata (if supported).
     /// </summary>
     public string? OAuthAuthorizationServerMetadata { get; init; }
@@ -49,9 +54,14 @@ public sealed class OAuthProbeResult
     public string? OpenIdConfigurationMetadata { get; init; }
 
     /// <summary>
+    /// The cached OAuth protected resource metadata (if supported, RFC 9728).
+    /// </summary>
+    public string? OAuthProtectedResourceMetadata { get; init; }
+
+    /// <summary>
     /// Whether any OAuth metadata endpoints are supported.
     /// </summary>
-    public bool SupportsOAuth => SupportsOAuthAuthorizationServer || SupportsOpenIdConfiguration;
+    public bool SupportsOAuth => SupportsOAuthAuthorizationServer || SupportsOpenIdConfiguration || SupportsOAuthProtectedResource;
 
     /// <summary>
     /// Creates a result indicating no OAuth support.
@@ -60,7 +70,8 @@ public sealed class OAuthProbeResult
     {
         BackendUrl = backendUrl,
         SupportsOAuthAuthorizationServer = false,
-        SupportsOpenIdConfiguration = false
+        SupportsOpenIdConfiguration = false,
+        SupportsOAuthProtectedResource = false
     };
 }
 
@@ -90,28 +101,40 @@ public sealed class OAuthMetadataProbe : IOAuthMetadataProbe
         var baseUrl = backendUrl.TrimEnd('/');
         ProxyLogger.OAuthMetadataProbeStarting(_logger, baseUrl);
 
-        // Probe both endpoints in parallel
+        // Probe all three endpoint types in parallel:
+        // 1. Standard OAuth Authorization Server metadata (RFC 8414)
+        // 2. OpenID Connect Discovery
+        // 3. RFC 9728 OAuth Protected Resource Metadata
         var oauthTask = ProbeEndpointAsync(baseUrl, "/.well-known/oauth-authorization-server", cancellationToken);
         var openIdTask = ProbeEndpointAsync(baseUrl, "/.well-known/openid-configuration", cancellationToken);
+        var protectedResourceTask = ProbeProtectedResourceAsync(baseUrl, cancellationToken);
 
-        await Task.WhenAll(oauthTask, openIdTask).ConfigureAwait(false);
+        await Task.WhenAll(oauthTask, openIdTask, protectedResourceTask).ConfigureAwait(false);
 
         var oauthMetadata = await oauthTask.ConfigureAwait(false);
         var openIdMetadata = await openIdTask.ConfigureAwait(false);
+        var protectedResourceMetadata = await protectedResourceTask.ConfigureAwait(false);
 
         var result = new OAuthProbeResult
         {
             BackendUrl = baseUrl,
             SupportsOAuthAuthorizationServer = oauthMetadata is not null,
             SupportsOpenIdConfiguration = openIdMetadata is not null,
+            SupportsOAuthProtectedResource = protectedResourceMetadata is not null,
             OAuthAuthorizationServerMetadata = oauthMetadata,
-            OpenIdConfigurationMetadata = openIdMetadata
+            OpenIdConfigurationMetadata = openIdMetadata,
+            OAuthProtectedResourceMetadata = protectedResourceMetadata
         };
 
         if (result.SupportsOAuth)
         {
             ProxyLogger.OAuthMetadataProbeSuccess(_logger, baseUrl,
                 result.SupportsOAuthAuthorizationServer, result.SupportsOpenIdConfiguration);
+
+            if (result.SupportsOAuthProtectedResource)
+            {
+                ProxyLogger.OAuthProtectedResourceProbeSuccess(_logger, baseUrl, protectedResourceMetadata ?? "unknown");
+            }
         }
         else
         {
@@ -121,9 +144,38 @@ public sealed class OAuthMetadataProbe : IOAuthMetadataProbe
         return result;
     }
 
-    private async Task<string?> ProbeEndpointAsync(string baseUrl, string path, CancellationToken cancellationToken)
+    /// <summary>
+    /// Probes the RFC 9728 OAuth Protected Resource Metadata endpoint.
+    /// Per RFC 9728, the well-known URI is constructed by inserting
+    /// <c>/.well-known/oauth-protected-resource</c> between the host and the path of the resource URL.
+    /// For example: <c>https://host/path/to/resource</c> becomes
+    /// <c>https://host/.well-known/oauth-protected-resource/path/to/resource</c>.
+    /// </summary>
+    private async Task<string?> ProbeProtectedResourceAsync(string baseUrl, CancellationToken cancellationToken)
     {
-        var targetUrl = $"{baseUrl}{path}";
+        // Parse the backend URL to construct the RFC 9728 well-known URL
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        // RFC 9728 Section 3: Insert /.well-known/oauth-protected-resource between host and path
+        // e.g., https://host/path/to/resource -> https://host/.well-known/oauth-protected-resource/path/to/resource
+        var protectedResourceUrl = $"{uri.Scheme}://{uri.Authority}/.well-known/oauth-protected-resource{uri.AbsolutePath}";
+
+        ProxyLogger.OAuthProtectedResourceProbeStarting(_logger, protectedResourceUrl);
+
+        return await ProbeEndpointAsync(
+            string.Empty, // baseUrl not needed — we pass the full URL as the path
+            protectedResourceUrl,
+            cancellationToken,
+            useAbsoluteUrl: true).ConfigureAwait(false);
+    }
+
+    private async Task<string?> ProbeEndpointAsync(string baseUrl, string path, CancellationToken cancellationToken, bool useAbsoluteUrl = false)
+    {
+        var targetUrl = useAbsoluteUrl ? path : $"{baseUrl}{path}";
+        var logPath = useAbsoluteUrl ? "/.well-known/oauth-protected-resource" : path;
 
         try
         {
@@ -138,21 +190,21 @@ public sealed class OAuthMetadataProbe : IOAuthMetadataProbe
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                ProxyLogger.OAuthMetadataProbeEndpointFound(_logger, path, targetUrl);
+                ProxyLogger.OAuthMetadataProbeEndpointFound(_logger, logPath, targetUrl);
                 return content;
             }
 
-            ProxyLogger.OAuthMetadataProbeEndpointNotFound(_logger, path, targetUrl, (int)response.StatusCode);
+            ProxyLogger.OAuthMetadataProbeEndpointNotFound(_logger, logPath, targetUrl, (int)response.StatusCode);
             return null;
         }
         catch (HttpRequestException ex)
         {
-            ProxyLogger.OAuthMetadataProbeEndpointError(_logger, path, targetUrl, ex);
+            ProxyLogger.OAuthMetadataProbeEndpointError(_logger, logPath, targetUrl, ex);
             return null;
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            ProxyLogger.OAuthMetadataProbeEndpointTimeout(_logger, path, targetUrl);
+            ProxyLogger.OAuthMetadataProbeEndpointTimeout(_logger, logPath, targetUrl);
             return null;
         }
     }

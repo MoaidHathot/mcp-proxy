@@ -17,6 +17,7 @@
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.0.0" />
     <PackageVersion Include="Dumpify" Version="0.7.0" />
     <!-- Authentication -->
+    <PackageVersion Include="Azure.Identity" Version="1.13.2" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0-preview.5.25277.114" />
     <PackageVersion Include="Microsoft.Identity.Web" Version="3.12.0" />
     <PackageVersion Include="Microsoft.Identity.Client" Version="4.82.1" />
