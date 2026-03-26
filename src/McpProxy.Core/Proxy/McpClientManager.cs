@@ -169,6 +169,11 @@ public sealed class McpClientManager : IAsyncDisposable
     public bool HasDeferredClients => _deferredClients.Count > 0;
 
     /// <summary>
+    /// Gets the names of backends that are still deferred (not yet connected).
+    /// </summary>
+    public IReadOnlyCollection<string> DeferredClientNames => _deferredClients.Keys;
+
+    /// <summary>
     /// Gets a client by server name.
     /// </summary>
     /// <param name="serverName">The server name.</param>

@@ -39,6 +39,17 @@ public sealed partial class TeamsCacheInterceptor : IToolCallInterceptor
     /// <inheritdoc />
     public ValueTask<CallToolResult?> InterceptAsync(ToolCallContext context, CancellationToken cancellationToken)
     {
+        // Check for forceRefresh flag — if true, skip cache entirely and let the
+        // call go through to the backend. The LLM can pass forceRefresh=true when it
+        // knows the cache is stale (e.g., after sending a message and wanting to see it).
+        if (HasForceRefresh(context))
+        {
+            LogCacheBypass(_logger, context.ToolName);
+            // Strip the forceRefresh argument before forwarding to the backend
+            StripForceRefreshArgument(context);
+            return ValueTask.FromResult<CallToolResult?>(null);
+        }
+
         var normalizedTool = NormalizeToolName(context.ToolName);
 
         // Try to short-circuit based on tool name
@@ -327,12 +338,62 @@ public sealed partial class TeamsCacheInterceptor : IToolCallInterceptor
         return normalized;
     }
 
+    private static bool HasForceRefresh(ToolCallContext context)
+    {
+        var args = context.Request?.Arguments;
+        if (args is null)
+        {
+            return false;
+        }
+
+        if (args.TryGetValue("forceRefresh", out var value))
+        {
+            return value.ValueKind == JsonValueKind.True;
+        }
+
+        if (args.TryGetValue("force_refresh", out var snakeValue))
+        {
+            return snakeValue.ValueKind == JsonValueKind.True;
+        }
+
+        return false;
+    }
+
+    private static void StripForceRefreshArgument(ToolCallContext context)
+    {
+        var args = context.Request?.Arguments;
+        if (args is null)
+        {
+            return;
+        }
+
+        // Build new arguments without forceRefresh / force_refresh
+        var cleaned = new Dictionary<string, JsonElement>();
+        foreach (var kvp in args)
+        {
+            if (!kvp.Key.Equals("forceRefresh", StringComparison.OrdinalIgnoreCase) &&
+                !kvp.Key.Equals("force_refresh", StringComparison.OrdinalIgnoreCase))
+            {
+                cleaned[kvp.Key] = kvp.Value;
+            }
+        }
+
+        context.Request = new CallToolRequestParams
+        {
+            Name = context.Request!.Name,
+            Arguments = cleaned
+        };
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // Logging
     // ═══════════════════════════════════════════════════════════════════════
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Cache hit for {ToolName}, returning cached data")]
     private static partial void LogCacheHit(ILogger logger, string toolName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache bypass for {ToolName}, forceRefresh=true")]
+    private static partial void LogCacheBypass(ILogger logger, string toolName);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Cache lookup for {EntityType}: found {Count} items")]
     private static partial void LogCacheLookup(ILogger logger, string entityType, int count);

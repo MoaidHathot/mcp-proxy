@@ -80,10 +80,26 @@ public sealed class TeamsIntegrationOptions
     public bool EnableAutoPagination { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets whether to register virtual tools.
+    /// Gets or sets whether to register virtual tools (teams_resolve, teams_cache_status, etc.).
+    /// When false, the proxy handles caching, resolution, and validation transparently
+    /// via hooks and interceptors — the LLM never sees these tools.
+    /// Enable with the --include-virtual CLI flag for diagnostics or advanced use.
+    /// Default is false.
+    /// </summary>
+    public bool RegisterVirtualTools { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets whether to automatically set contentType='html' for message posting tools
+    /// when not explicitly specified by the caller. This enables rich formatting by default.
     /// Default is true.
     /// </summary>
-    public bool RegisterVirtualTools { get; set; } = true;
+    public bool EnableMessageDefaults { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the default content type for messages.
+    /// Default is "html".
+    /// </summary>
+    public string DefaultContentType { get; set; } = "html";
 
     /// <summary>
     /// Gets or sets whether to load the cache from disk on startup.

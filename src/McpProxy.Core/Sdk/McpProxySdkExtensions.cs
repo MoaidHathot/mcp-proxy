@@ -383,6 +383,33 @@ public static class McpProxySdkHostExtensions
     }
 
     /// <summary>
+    /// Adds authentication middleware that requires a Bearer token to be present on
+    /// incoming requests without validating it. The token is forwarded to the backend
+    /// which performs the actual validation. If no token is present, the middleware
+    /// returns a 401 challenge with RFC 9728 resource_metadata hints so the MCP client
+    /// can trigger its OAuth flow.
+    /// </summary>
+    /// <remarks>
+    /// This should be called after <see cref="UseOAuthMetadataProxy"/> and before
+    /// <c>MapMcp()</c> in the middleware pipeline. The OAuth metadata middleware must
+    /// come first so that the <c>/.well-known/</c> discovery endpoints are accessible
+    /// without authentication.
+    /// </remarks>
+    /// <param name="app">The web application.</param>
+    /// <returns>The web application for chaining.</returns>
+    public static WebApplication UseForwardAuthAuthentication(this WebApplication app)
+    {
+        var config = new AuthenticationConfiguration
+        {
+            Enabled = true,
+            Type = AuthenticationType.ForwardAuthorization
+        };
+
+        app.UseMcpProxyAuthentication(config);
+        return app;
+    }
+
+    /// <summary>
     /// Configures backend authentication for this server (HTTP/SSE only).
     /// </summary>
     /// <param name="builder">The server builder.</param>

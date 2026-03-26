@@ -23,10 +23,16 @@ public sealed class AuthenticationMiddleware
     /// <param name="next">The next middleware in the pipeline.</param>
     /// <param name="config">The authentication configuration.</param>
     /// <param name="logger">The logger instance.</param>
+    /// <param name="oauthRegistry">
+    /// Optional OAuth metadata registry, resolved from DI. Used by the
+    /// <see cref="ForwardAuthorizationAuthHandler"/> to include RFC 9728
+    /// resource_metadata hints in 401 challenges.
+    /// </param>
     public AuthenticationMiddleware(
         RequestDelegate next,
         AuthenticationConfiguration config,
-        ILogger<AuthenticationMiddleware> logger)
+        ILogger<AuthenticationMiddleware> logger,
+        IOAuthMetadataRegistry? oauthRegistry = null)
     {
         _next = next;
         _logger = logger;
@@ -39,6 +45,7 @@ public sealed class AuthenticationMiddleware
                 AuthenticationType.ApiKey => new ApiKeyAuthHandler(config.ApiKey),
                 AuthenticationType.Bearer => new BearerTokenAuthHandler(config.Bearer),
                 AuthenticationType.AzureAd => new AzureAdAuthHandler(config.AzureAd),
+                AuthenticationType.ForwardAuthorization => new ForwardAuthorizationAuthHandler(oauthRegistry),
                 _ => null
             };
         }

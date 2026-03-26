@@ -152,6 +152,17 @@ public sealed class SdkEnabledProxyServer
         // we have an HTTP context with an Authorization header from the client.
         await _clientManager.EnsureDeferredClientsConnectedAsync(cancellationToken).ConfigureAwait(false);
 
+        // Warn if backends remain deferred after the connection attempt — their tools will
+        // be absent from the response, which may confuse the client.
+        if (_clientManager.HasDeferredClients)
+        {
+            _logger.LogWarning(
+                "Backends still deferred after connection attempt: {DeferredBackends}. " +
+                "Their tools will not appear in the tool list. " +
+                "This typically means the client has not provided a valid Authorization header.",
+                string.Join(", ", _clientManager.DeferredClientNames));
+        }
+
         ProxyLogger.ListingTools(_logger, _clientManager.Clients.Count);
 
         var toolsWithServers = new List<ToolWithServer>();

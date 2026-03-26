@@ -142,7 +142,16 @@ public enum AuthenticationType
     /// <summary>
     /// Azure Active Directory (Microsoft Entra ID) authentication.
     /// </summary>
-    AzureAd
+    AzureAd,
+
+    /// <summary>
+    /// Forward authorization mode. The proxy requires a Bearer token to be present
+    /// on incoming requests but does not validate it cryptographically. The token is
+    /// forwarded as-is to the backend server which performs the actual validation.
+    /// If no token is present, the proxy returns a 401 challenge so the MCP client
+    /// (e.g., VS Code) can trigger its OAuth flow.
+    /// </summary>
+    ForwardAuthorization
 }
 
 /// <summary>

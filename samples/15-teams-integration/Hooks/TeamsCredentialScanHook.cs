@@ -26,16 +26,20 @@ public sealed partial class TeamsCredentialScanHook : IPreInvokeHook
         _blockOnDetection = blockOnDetection;
         _messageTools =
         [
+            "PostMessage",
             "SendChatMessage",
             "SendChannelMessage",
+            "PostChannelMessage",
             "ReplyToMessage",
             "ReplyToChatMessage",
             "ReplyToChannelMessage",
             "CreateChatMessage",
             "CreateChannelMessage",
             // Prefixed versions
+            "teams_PostMessage",
             "teams_SendChatMessage",
             "teams_SendChannelMessage",
+            "teams_PostChannelMessage",
             "teams_ReplyToMessage",
             "teams_ReplyToChatMessage",
             "teams_ReplyToChannelMessage",

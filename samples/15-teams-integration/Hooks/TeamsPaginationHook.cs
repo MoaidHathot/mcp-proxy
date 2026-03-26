@@ -30,6 +30,7 @@ public sealed partial class TeamsPaginationHook : IPreInvokeHook
             "ListChannels",
             "ListChatMembers",
             "ListMessages",
+            "ListChatMessages",
             "ListChannelMessages",
             // Prefixed versions
             "teams_ListChats",
@@ -37,12 +38,14 @@ public sealed partial class TeamsPaginationHook : IPreInvokeHook
             "teams_ListChannels",
             "teams_ListChatMembers",
             "teams_ListMessages",
+            "teams_ListChatMessages",
             "teams_ListChannelMessages",
             "msgraph_ListChats",
             "msgraph_ListTeams",
             "msgraph_ListChannels",
             "msgraph_ListChatMembers",
             "msgraph_ListMessages",
+            "msgraph_ListChatMessages",
             "msgraph_ListChannelMessages"
         ];
     }
