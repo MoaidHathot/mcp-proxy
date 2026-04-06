@@ -11,7 +11,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>mcpproxy</ToolCommandName>
     <PackageId>McpProxy</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.2.0</Version>
     <Authors>Moaid Hathot</Authors>
     <Company>Moaid Hathot</Company>
     <Product>MCP Proxy</Product>
