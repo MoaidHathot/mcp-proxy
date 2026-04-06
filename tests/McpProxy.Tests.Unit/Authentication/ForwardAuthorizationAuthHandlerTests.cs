@@ -1,4 +1,4 @@
-using McpProxy.SDK.Authentication;
+using McpProxy.Sdk.Authentication;
 using Microsoft.AspNetCore.Http;
 
 #pragma warning disable CA2007 // Consider calling ConfigureAwait on awaited task (test code)

@@ -1,5 +1,5 @@
-using McpProxy.SDK.Authentication;
-using McpProxy.SDK.Configuration;
+using McpProxy.Sdk.Authentication;
+using McpProxy.Sdk.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace McpProxy.Tests.Unit.Authentication;

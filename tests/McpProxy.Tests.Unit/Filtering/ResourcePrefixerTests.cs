@@ -1,5 +1,5 @@
-using McpProxy.SDK.Configuration;
-using McpProxy.SDK.Filtering;
+using McpProxy.Sdk.Configuration;
+using McpProxy.Sdk.Filtering;
 using ModelContextProtocol.Protocol;
 
 namespace McpProxy.Tests.Unit.Filtering;

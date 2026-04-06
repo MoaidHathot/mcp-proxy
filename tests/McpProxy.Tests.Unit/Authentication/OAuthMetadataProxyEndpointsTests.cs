@@ -1,4 +1,4 @@
-using McpProxy.SDK.Authentication;
+using McpProxy.Sdk.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;

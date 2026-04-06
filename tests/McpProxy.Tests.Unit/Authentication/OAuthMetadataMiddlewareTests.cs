@@ -1,4 +1,4 @@
-using McpProxy.SDK.Authentication;
+using McpProxy.Sdk.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 

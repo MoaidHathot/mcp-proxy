@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using McpProxy.Abstractions;
-using McpProxy.SDK.Hooks.BuiltIn;
-using McpProxy.SDK.Telemetry;
+using McpProxy.Sdk.Hooks.BuiltIn;
+using McpProxy.Sdk.Telemetry;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 

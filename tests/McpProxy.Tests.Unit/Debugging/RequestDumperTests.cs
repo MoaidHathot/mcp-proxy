@@ -1,5 +1,5 @@
-using McpProxy.SDK.Configuration;
-using McpProxy.SDK.Debugging;
+using McpProxy.Sdk.Configuration;
+using McpProxy.Sdk.Debugging;
 using Microsoft.Extensions.Logging;
 
 #pragma warning disable CA2007 // Consider calling ConfigureAwait on awaited task (test code)

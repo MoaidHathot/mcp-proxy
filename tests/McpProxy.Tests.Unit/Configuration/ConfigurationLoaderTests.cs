@@ -1,4 +1,4 @@
-using McpProxy.SDK.Configuration;
+using McpProxy.Sdk.Configuration;
 
 namespace McpProxy.Tests.Unit.Configuration;
 

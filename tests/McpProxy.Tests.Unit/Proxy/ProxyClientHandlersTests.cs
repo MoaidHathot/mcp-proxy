@@ -1,4 +1,4 @@
-using McpProxy.SDK.Proxy;
+using McpProxy.Sdk.Proxy;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;

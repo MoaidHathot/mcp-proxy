@@ -27,23 +27,23 @@ MCP Proxy can be used as a library in your .NET applications for programmatic co
 
 ## Installation
 
-Add the McpProxy.SDK package to your project:
+Add the McpProxy.Sdk package to your project:
 
 ```bash
-dotnet add package McpProxy.SDK
+dotnet add package McpProxy.Sdk
 ```
 
 Or add to your `.csproj`:
 
 ```xml
-<PackageReference Include="McpProxy.SDK" Version="1.0.0" />
+<PackageReference Include="McpProxy.Sdk" Version="1.0.0" />
 ```
 
 ## Basic Usage
 
 ```csharp
-using McpProxy.SDK.Configuration;
-using McpProxy.SDK.Proxy;
+using McpProxy.Sdk.Configuration;
+using McpProxy.Sdk.Proxy;
 using Microsoft.Extensions.Logging;
 
 // Create logger factory

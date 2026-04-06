@@ -1,5 +1,5 @@
 using McpProxy.Abstractions;
-using McpProxy.SDK.Hooks.BuiltIn;
+using McpProxy.Sdk.Hooks.BuiltIn;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 
