@@ -1,6 +1,6 @@
 using McpProxy.Abstractions;
-using McpProxy.Core.Debugging;
-using McpProxy.Core.Hooks.BuiltIn;
+using McpProxy.SDK.Debugging;
+using McpProxy.SDK.Hooks.BuiltIn;
 using ModelContextProtocol.Protocol;
 
 #pragma warning disable CA2007 // Consider calling ConfigureAwait on awaited task (test code)

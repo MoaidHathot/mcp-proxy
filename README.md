@@ -616,7 +616,7 @@ MCP Proxy can be consumed as an SDK in your .NET applications, providing a fluen
 ### Quick Start
 
 ```csharp
-using McpProxy.Core.Sdk;
+using McpProxy.SDK.Sdk;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -825,8 +825,8 @@ See the `/samples` directory for complete examples:
 For advanced scenarios, you can use the underlying classes directly:
 
 ```csharp
-using McpProxy.Core.Configuration;
-using McpProxy.Core.Proxy;
+using McpProxy.SDK.Configuration;
+using McpProxy.SDK.Proxy;
 using Microsoft.Extensions.Logging;
 
 // Load configuration

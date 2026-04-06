@@ -9,7 +9,7 @@ The solution is organized as a multi-project structure:
 McpProxy.slnx
 ├── src/
 │   ├── McpProxy.Abstractions/     # Interfaces and contracts
-│   ├── McpProxy.Core/             # Core library implementation
+│   ├── McpProxy.SDK/             # Core library implementation
 │   └── McpProxy/                  # CLI tool (NuGet global tool)
 └── tests/
     ├── McpProxy.Tests.Unit/       # Unit tests (178 tests passing)
@@ -19,7 +19,7 @@ McpProxy.slnx
 ### Implemented Features
 
 #### 1. Core Proxy Functionality
-- **McpProxyServer** (`src/McpProxy.Core/Proxy/McpProxyServer.cs`): Aggregates multiple MCP backends
+- **McpProxyServer** (`src/McpProxy.SDK/Proxy/McpProxyServer.cs`): Aggregates multiple MCP backends
   - `ListToolsAsync`: Lists tools from all backends with filtering and transformation
   - `CallToolAsync`: Routes tool calls to the correct backend with hook support
   - `ListResourcesAsync`: Lists resources from all backends
@@ -27,13 +27,13 @@ McpProxy.slnx
   - `ListPromptsAsync`: Lists prompts from all backends
   - `GetPromptAsync`: Gets prompts from the correct backend
 
-- **McpClientManager** (`src/McpProxy.Core/Proxy/McpClientManager.cs`): Manages connections to backend MCP servers
+- **McpClientManager** (`src/McpProxy.SDK/Proxy/McpClientManager.cs`): Manages connections to backend MCP servers
   - Supports STDIO, HTTP, and SSE transports
   - Connection lifecycle management
 
 #### 2. Configuration System
-- **ProxyConfiguration** (`src/McpProxy.Core/Configuration/ProxyConfiguration.cs`): Main config model
-- **ServerConfiguration** (`src/McpProxy.Core/Configuration/ServerConfiguration.cs`): Per-server config
+- **ProxyConfiguration** (`src/McpProxy.SDK/Configuration/ProxyConfiguration.cs`): Main config model
+- **ServerConfiguration** (`src/McpProxy.SDK/Configuration/ServerConfiguration.cs`): Per-server config
   - Transport type (Stdio, Http, Sse)
   - Command/Arguments for STDIO
   - URL for HTTP/SSE
@@ -44,7 +44,7 @@ McpProxy.slnx
   - Route path for per-server routing
   - Enabled flag
 
-- **ConfigurationLoader** (`src/McpProxy.Core/Configuration/ConfigurationLoader.cs`):
+- **ConfigurationLoader** (`src/McpProxy.SDK/Configuration/ConfigurationLoader.cs`):
   - JSON configuration loading with comments and trailing commas
   - Environment variable substitution: `"env:VAR_NAME"` and `${VAR_NAME}` syntax
   - Validation of required properties
@@ -68,10 +68,10 @@ McpProxy.slnx
 - **IPreInvokeHook**: Execute before tool calls (can modify request)
 - **IPostInvokeHook**: Execute after tool calls (can modify result)
 - **IToolHook**: Combined pre and post hooks
-- **HookPipeline** (`src/McpProxy.Core/Hooks/HookPipeline.cs`):
+- **HookPipeline** (`src/McpProxy.SDK/Hooks/HookPipeline.cs`):
   - Priority-based ordering
   - Context sharing between hooks
-- **Built-in hooks** (`src/McpProxy.Core/Hooks/BuiltInHooks.cs`):
+- **Built-in hooks** (`src/McpProxy.SDK/Hooks/BuiltInHooks.cs`):
   - `LoggingHook`: Logs tool invocations
   - `InputTransformHook`: Transforms input arguments
   - `OutputTransformHook`: Transforms output results
@@ -98,7 +98,7 @@ McpProxy.slnx
 - MIT License
 
 #### 9. Advanced MCP Protocol Support
-- **ProxyClientHandlers** (`src/McpProxy.Core/Proxy/ProxyClientHandlers.cs`): Forwards requests from backend servers to connected clients
+- **ProxyClientHandlers** (`src/McpProxy.SDK/Proxy/ProxyClientHandlers.cs`): Forwards requests from backend servers to connected clients
   - Sampling: Backend servers can request LLM completions via the proxy
   - Elicitation: Backend servers can request structured user input
   - Roots: Backend servers can request file system root information
@@ -135,7 +135,7 @@ McpProxy.slnx
 Backend MCP servers can now request LLM completions from the proxy's connected client.
 
 **Implementation**:
-- `ProxyClientHandlers` (`src/McpProxy.Core/Proxy/ProxyClientHandlers.cs`): Handles forwarding sampling/elicitation/roots requests from backend servers to connected clients
+- `ProxyClientHandlers` (`src/McpProxy.SDK/Proxy/ProxyClientHandlers.cs`): Handles forwarding sampling/elicitation/roots requests from backend servers to connected clients
 - `McpClientManager` updated to accept `ProxyClientHandlers` and configure handlers when creating backend connections
 - Backend clients advertise `SamplingCapability`, `ElicitationCapability`, and `RootsCapability`
 - Handlers set up to forward requests via `McpServer.SampleAsync()`, `McpServer.ElicitAsync()`, `McpServer.RequestRootsAsync()`
@@ -159,7 +159,7 @@ Backend MCP servers can now request file system roots from the proxy's connected
 Hooks can now be configured via JSON in addition to programmatic configuration.
 
 **Implementation**:
-- `HookFactory` (`src/McpProxy.Core/Hooks/HookFactory.cs`): Factory for creating hook instances from configuration
+- `HookFactory` (`src/McpProxy.SDK/Hooks/HookFactory.cs`): Factory for creating hook instances from configuration
   - Supports built-in hooks: `logging`, `inputTransform`, `outputTransform`
   - `ConfigurePipeline()` method adds hooks to a pipeline from config
   - Extensible via `RegisterHookType()` for custom hooks
@@ -195,7 +195,7 @@ Hooks can now be configured via JSON in addition to programmatic configuration.
 Support for exposing servers on different HTTP endpoints.
 
 **Implementation**:
-- `SingleServerProxy` (`src/McpProxy.Core/Proxy/SingleServerProxy.cs`): Proxy for single backend server
+- `SingleServerProxy` (`src/McpProxy.SDK/Proxy/SingleServerProxy.cs`): Proxy for single backend server
   - Simplified API that doesn't require `RequestContext<T>` (accepts params directly)
   - Supports all MCP operations: ListTools, CallTool, ListResources, ReadResource, ListPrompts, GetPrompt
   - Filtering and prefixing support
@@ -312,7 +312,7 @@ Added filtering interfaces for resources and prompts, similar to existing tool f
 Cache tool lists from backends to reduce repeated calls, with configurable TTL and notification-based invalidation.
 
 **Implementation**:
-- `ToolCache` class (`src/McpProxy.Core/Proxy/ToolCache.cs`): Thread-safe cache with TTL support
+- `ToolCache` class (`src/McpProxy.SDK/Proxy/ToolCache.cs`): Thread-safe cache with TTL support
   - Configurable default TTL (default: 5 minutes)
   - Per-server TTL override support
   - `GetOrFetchAsync()` method for automatic cache population
@@ -341,7 +341,7 @@ Cache tool lists from backends to reduce repeated calls, with configurable TTL a
 Forward progress notifications from backends to connected clients.
 
 **Implementation**:
-- `NotificationForwarder` class (`src/McpProxy.Core/Proxy/NotificationForwarder.cs`): Handles forwarding of all notification types
+- `NotificationForwarder` class (`src/McpProxy.SDK/Proxy/NotificationForwarder.cs`): Handles forwarding of all notification types
   - `ForwardProgressAsync()`: Forwards `notifications/progress` from backends
   - `ForwardResourceUpdatedAsync()`: Forwards `notifications/resources/updated`
   - `ForwardToolListChangedAsync()`: Forwards `tools/list_changed` (also invalidates cache)
@@ -366,7 +366,7 @@ Forward list changed notifications from backends to clients, enabling dynamic ca
 Support for resource subscription management and notification forwarding.
 
 **Implementation**:
-- `ResourceSubscriptionManager` class (`src/McpProxy.Core/Proxy/ResourceSubscriptionManager.cs`):
+- `ResourceSubscriptionManager` class (`src/McpProxy.SDK/Proxy/ResourceSubscriptionManager.cs`):
   - Tracks active subscriptions per client session
   - Maps resource URIs to their backend servers
   - Thread-safe subscription tracking with `ConcurrentDictionary`
@@ -451,13 +451,13 @@ Added `IResourceTransformer` and `IPromptTransformer` interfaces for transformin
 Added OpenTelemetry integration for distributed tracing and metrics.
 
 **Implementation**:
-- `ProxyMetrics` class (`src/McpProxy.Core/Telemetry/ProxyMetrics.cs`):
+- `ProxyMetrics` class (`src/McpProxy.SDK/Telemetry/ProxyMetrics.cs`):
   - Counters: `mcpproxy.tool_calls.total`, `mcpproxy.tool_calls.successful`, `mcpproxy.tool_calls.failed`
   - Counters: `mcpproxy.resource_reads.total`, `mcpproxy.prompt_gets.total`
   - Histograms: `mcpproxy.tool_call.duration`, `mcpproxy.resource_read.duration`, `mcpproxy.prompt_get.duration`
   - UpDownCounter: `mcpproxy.backend_connections.active`
   - All metrics include `server` and operation-specific tags
-- `ProxyActivitySource` class (`src/McpProxy.Core/Telemetry/ProxyActivitySource.cs`):
+- `ProxyActivitySource` class (`src/McpProxy.SDK/Telemetry/ProxyActivitySource.cs`):
   - Activities: `mcpproxy.tool_call`, `mcpproxy.resource_read`, `mcpproxy.prompt_get`
   - Activities: `mcpproxy.list_tools`, `mcpproxy.list_resources`, `mcpproxy.list_prompts`
   - Tags: `mcp.server`, `mcp.tool`, `mcp.resource`, `mcp.prompt`, `mcp.operation`
@@ -576,23 +576,23 @@ Tool Call Request
 ### Core Files
 | File | Purpose |
 |------|---------|
-| `src/McpProxy.Core/Proxy/McpProxyServer.cs` | Main proxy logic |
-| `src/McpProxy.Core/Proxy/McpClientManager.cs` | Backend connection management |
-| `src/McpProxy.Core/Proxy/McpClientInfo.cs` | Client info container |
-| `src/McpProxy.Core/Proxy/IMcpClientWrapper.cs` | Interface for testable MCP client |
-| `src/McpProxy.Core/Proxy/McpClientWrapper.cs` | MCP client wrapper implementation |
-| `src/McpProxy.Core/Proxy/SingleServerProxy.cs` | Single-server proxy for PerServer routing |
-| `src/McpProxy.Core/Proxy/ProxyClientHandlers.cs` | Forwarding handlers for sampling/elicitation/roots |
-| `src/McpProxy.Core/Proxy/ToolCache.cs` | Tool list caching with TTL |
-| `src/McpProxy.Core/Proxy/NotificationForwarder.cs` | Notification forwarding (progress, list changed) |
-| `src/McpProxy.Core/Proxy/ResourceSubscriptionManager.cs` | Resource subscription tracking |
-| `src/McpProxy.Core/Configuration/ConfigurationLoader.cs` | JSON config loading |
-| `src/McpProxy.Core/Configuration/ProxyConfiguration.cs` | Config model |
-| `src/McpProxy.Core/Hooks/HookPipeline.cs` | Hook execution pipeline |
-| `src/McpProxy.Core/Hooks/HookFactory.cs` | Hook factory for JSON config |
-| `src/McpProxy.Core/Filtering/ToolFilters.cs` | Tool filter implementations |
-| `src/McpProxy.Core/Filtering/ResourceFilters.cs` | Resource filter implementations |
-| `src/McpProxy.Core/Filtering/PromptFilters.cs` | Prompt filter implementations |
+| `src/McpProxy.SDK/Proxy/McpProxyServer.cs` | Main proxy logic |
+| `src/McpProxy.SDK/Proxy/McpClientManager.cs` | Backend connection management |
+| `src/McpProxy.SDK/Proxy/McpClientInfo.cs` | Client info container |
+| `src/McpProxy.SDK/Proxy/IMcpClientWrapper.cs` | Interface for testable MCP client |
+| `src/McpProxy.SDK/Proxy/McpClientWrapper.cs` | MCP client wrapper implementation |
+| `src/McpProxy.SDK/Proxy/SingleServerProxy.cs` | Single-server proxy for PerServer routing |
+| `src/McpProxy.SDK/Proxy/ProxyClientHandlers.cs` | Forwarding handlers for sampling/elicitation/roots |
+| `src/McpProxy.SDK/Proxy/ToolCache.cs` | Tool list caching with TTL |
+| `src/McpProxy.SDK/Proxy/NotificationForwarder.cs` | Notification forwarding (progress, list changed) |
+| `src/McpProxy.SDK/Proxy/ResourceSubscriptionManager.cs` | Resource subscription tracking |
+| `src/McpProxy.SDK/Configuration/ConfigurationLoader.cs` | JSON config loading |
+| `src/McpProxy.SDK/Configuration/ProxyConfiguration.cs` | Config model |
+| `src/McpProxy.SDK/Hooks/HookPipeline.cs` | Hook execution pipeline |
+| `src/McpProxy.SDK/Hooks/HookFactory.cs` | Hook factory for JSON config |
+| `src/McpProxy.SDK/Filtering/ToolFilters.cs` | Tool filter implementations |
+| `src/McpProxy.SDK/Filtering/ResourceFilters.cs` | Resource filter implementations |
+| `src/McpProxy.SDK/Filtering/PromptFilters.cs` | Prompt filter implementations |
 | `src/McpProxy/Program.cs` | CLI entry point |
 
 ### Test Files

@@ -1,7 +1,7 @@
 using McpProxy.Abstractions;
-using McpProxy.Core.Configuration;
-using McpProxy.Core.Hooks;
-using McpProxy.Core.Proxy;
+using McpProxy.SDK.Configuration;
+using McpProxy.SDK.Hooks;
+using McpProxy.SDK.Proxy;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 

@@ -1,4 +1,4 @@
-using McpProxy.Core.Caching;
+using McpProxy.SDK.Caching;
 using ModelContextProtocol.Protocol;
 
 namespace McpProxy.Tests.Unit.Caching;

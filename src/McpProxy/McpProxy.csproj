@@ -38,7 +38,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\McpProxy.Core\McpProxy.Core.csproj" />
+    <ProjectReference Include="..\McpProxy.SDK\McpProxy.SDK.csproj" />
   </ItemGroup>
 
   <ItemGroup>

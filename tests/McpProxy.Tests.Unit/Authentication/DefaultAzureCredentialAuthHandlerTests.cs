@@ -1,5 +1,5 @@
 using Azure.Core;
-using McpProxy.Core.Authentication;
+using McpProxy.SDK.Authentication;
 using Microsoft.Extensions.Logging;
 
 namespace McpProxy.Tests.Unit.Authentication;

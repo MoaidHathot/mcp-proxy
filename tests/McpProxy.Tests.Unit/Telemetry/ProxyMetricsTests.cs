@@ -1,5 +1,5 @@
 using System.Diagnostics.Metrics;
-using McpProxy.Core.Telemetry;
+using McpProxy.SDK.Telemetry;
 
 namespace McpProxy.Tests.Unit.Telemetry;
 

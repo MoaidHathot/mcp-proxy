@@ -1,5 +1,5 @@
 using McpProxy.Abstractions;
-using McpProxy.Core.Sdk;
+using McpProxy.SDK.Sdk;
 using ModelContextProtocol.Protocol;
 
 namespace McpProxy.Tests.Unit.Sdk;

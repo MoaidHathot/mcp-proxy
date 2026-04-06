@@ -1,6 +1,6 @@
-using McpProxy.Core.Configuration;
-using McpProxy.Core.Proxy;
-using McpProxy.Core.Sdk;
+using McpProxy.SDK.Configuration;
+using McpProxy.SDK.Proxy;
+using McpProxy.SDK.Sdk;
 using McpProxy.Samples.TeamsIntegration;
 using McpProxy.Samples.TeamsIntegration.Cache;
 

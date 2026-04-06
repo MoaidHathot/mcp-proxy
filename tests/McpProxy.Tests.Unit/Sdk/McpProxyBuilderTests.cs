@@ -1,5 +1,5 @@
-using McpProxy.Core.Configuration;
-using McpProxy.Core.Sdk;
+using McpProxy.SDK.Configuration;
+using McpProxy.SDK.Sdk;
 using ModelContextProtocol.Protocol;
 
 namespace McpProxy.Tests.Unit.Sdk;

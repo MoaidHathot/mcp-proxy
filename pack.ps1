@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $projects = @(
-    "src/McpProxy.Core/McpProxy.Core.csproj",
+    "src/McpProxy.SDK/McpProxy.SDK.csproj",
     "src/McpProxy/McpProxy.csproj"
 )
 

@@ -33,7 +33,7 @@ This example demonstrates how to use MCP Proxy as an SDK in your .NET applicatio
 ## Code Example
 
 ```csharp
-using McpProxy.Core.Sdk;
+using McpProxy.SDK.Sdk;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 

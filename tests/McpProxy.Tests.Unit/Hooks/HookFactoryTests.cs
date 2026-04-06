@@ -1,8 +1,8 @@
 using System.Text.Json;
 using McpProxy.Abstractions;
-using McpProxy.Core.Configuration;
-using McpProxy.Core.Hooks;
-using McpProxy.Core.Hooks.BuiltIn;
+using McpProxy.SDK.Configuration;
+using McpProxy.SDK.Hooks;
+using McpProxy.SDK.Hooks.BuiltIn;
 using Microsoft.Extensions.Logging;
 
 #pragma warning disable CA2007 // Consider calling ConfigureAwait on awaited task (test code)

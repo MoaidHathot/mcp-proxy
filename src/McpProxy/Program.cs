@@ -1,11 +1,11 @@
 using System.CommandLine;
-using McpProxy.Core.Authentication;
-using McpProxy.Core.Configuration;
-using McpProxy.Core.Debugging;
-using McpProxy.Core.Hooks;
-using McpProxy.Core.Logging;
-using McpProxy.Core.Proxy;
-using McpProxy.Core.Telemetry;
+using McpProxy.SDK.Authentication;
+using McpProxy.SDK.Configuration;
+using McpProxy.SDK.Debugging;
+using McpProxy.SDK.Hooks;
+using McpProxy.SDK.Logging;
+using McpProxy.SDK.Proxy;
+using McpProxy.SDK.Telemetry;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 

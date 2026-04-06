@@ -13,7 +13,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/McpProxy.Abstractions/McpProxy.Abstractions.csproj" />
-    <Project Path="src/McpProxy.Core/McpProxy.Core.csproj" />
+    <Project Path="src/McpProxy.SDK/McpProxy.SDK.csproj" />
     <Project Path="src/McpProxy/McpProxy.csproj" />
   </Folder>
   <Folder Name="/tests/">

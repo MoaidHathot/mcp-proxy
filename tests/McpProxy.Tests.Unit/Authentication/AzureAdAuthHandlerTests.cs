@@ -1,5 +1,5 @@
-using McpProxy.Core.Authentication;
-using McpProxy.Core.Configuration;
+using McpProxy.SDK.Authentication;
+using McpProxy.SDK.Configuration;
 using Microsoft.AspNetCore.Http;
 
 namespace McpProxy.Tests.Unit.Authentication;

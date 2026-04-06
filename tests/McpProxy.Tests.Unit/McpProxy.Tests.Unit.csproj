@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\McpProxy.Core\McpProxy.Core.csproj" />
+    <ProjectReference Include="..\..\src\McpProxy.SDK\McpProxy.SDK.csproj" />
     <ProjectReference Include="..\..\src\McpProxy.Abstractions\McpProxy.Abstractions.csproj" />
   </ItemGroup>
 

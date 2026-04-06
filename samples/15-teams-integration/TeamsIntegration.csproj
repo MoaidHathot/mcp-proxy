@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\McpProxy.Core\McpProxy.Core.csproj" />
+    <ProjectReference Include="..\..\src\McpProxy.SDK\McpProxy.SDK.csproj" />
   </ItemGroup>
 
 </Project>

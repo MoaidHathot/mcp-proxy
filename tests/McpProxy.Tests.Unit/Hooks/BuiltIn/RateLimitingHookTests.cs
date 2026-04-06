@@ -1,6 +1,6 @@
 using McpProxy.Abstractions;
-using McpProxy.Core.Exceptions;
-using McpProxy.Core.Hooks.BuiltIn;
+using McpProxy.SDK.Exceptions;
+using McpProxy.SDK.Hooks.BuiltIn;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;

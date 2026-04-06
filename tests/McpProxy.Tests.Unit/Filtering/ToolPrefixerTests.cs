@@ -1,4 +1,4 @@
-using McpProxy.Core.Filtering;
+using McpProxy.SDK.Filtering;
 using ModelContextProtocol.Protocol;
 
 namespace McpProxy.Tests.Unit.Filtering;

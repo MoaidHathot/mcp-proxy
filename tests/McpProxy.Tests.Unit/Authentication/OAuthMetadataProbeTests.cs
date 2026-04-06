@@ -1,4 +1,4 @@
-using McpProxy.Core.Authentication;
+using McpProxy.SDK.Authentication;
 using Microsoft.Extensions.Logging;
 using System.Net;
 

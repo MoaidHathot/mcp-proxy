@@ -1,5 +1,5 @@
-using McpProxy.Core.Configuration;
-using McpProxy.Core.Proxy;
+using McpProxy.SDK.Configuration;
+using McpProxy.SDK.Proxy;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 
