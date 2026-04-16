@@ -145,7 +145,16 @@ public enum BackendAuthType
     /// Azure CLI (<c>az login</c>), environment variables, managed identity, Visual Studio, etc.
     /// Useful for local development scenarios where the developer is already authenticated.
     /// </summary>
-    AzureDefaultCredential
+    AzureDefaultCredential,
+
+    /// <summary>
+    /// Interactive browser authentication using a public client ID.
+    /// Opens a browser for user sign-in on first use; subsequent requests use cached refresh tokens.
+    /// Useful for authenticating as the current user against backends that require a pre-authorized
+    /// public client ID (e.g., Microsoft 365 MCP servers via VS Code's app registration).
+    /// Tokens are persisted to the OS credential store for silent re-authentication across restarts.
+    /// </summary>
+    InteractiveBrowser
 }
 
 /// <summary>
@@ -213,6 +222,19 @@ public sealed class BackendAzureAdConfiguration
     /// Leave null to use system-assigned managed identity.
     /// </summary>
     public string? ManagedIdentityClientId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the redirect URI for interactive browser authentication.
+    /// Default is <c>http://localhost</c>, which is the standard redirect for public client apps.
+    /// </summary>
+    public string? RedirectUri { get; set; }
+
+    /// <summary>
+    /// Gets or sets the name for the persistent token cache used by interactive browser authentication.
+    /// Tokens are persisted to the OS credential store (Windows Credential Manager, macOS Keychain, etc.)
+    /// so that users only need to sign in once. Default is <c>"mcp-proxy"</c>.
+    /// </summary>
+    public string? TokenCacheName { get; set; }
 
     /// <summary>
     /// Gets or sets a pre-configured <see cref="Azure.Core.TokenCredential"/> to use for

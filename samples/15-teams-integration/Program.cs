@@ -116,17 +116,19 @@ if (authModeType == AuthModeType.ProxyAuth)
         ?? ["https://graph.microsoft.com/.default"];
 }
 
-// For user-auth mode, we need VS Code's client ID
-string? vsCodeClientId = null;
+// For user-auth mode, we need a public client ID (e.g., VS Code's app registration)
+string? publicClientId = null;
 
 if (authModeType == AuthModeType.UserAuth)
 {
-    vsCodeClientId = Environment.GetEnvironmentVariable("VSCODE_CLIENT_ID")
-        ?? GetArg(args, "--vscode-client-id")
+    publicClientId = Environment.GetEnvironmentVariable("PUBLIC_CLIENT_ID")
+        ?? Environment.GetEnvironmentVariable("VSCODE_CLIENT_ID") // backward compat
+        ?? GetArg(args, "--public-client-id")
+        ?? GetArg(args, "--vscode-client-id") // backward compat
         ?? throw new InvalidOperationException(
-            "VSCODE_CLIENT_ID is required for user-auth mode. " +
-            "Run with --auth-mode=forward-auth --log-token first to discover VS Code's client ID, " +
-            "then pass it via --vscode-client-id or VSCODE_CLIENT_ID environment variable.");
+            "PUBLIC_CLIENT_ID is required for user-auth mode. " +
+            "Run with --auth-mode=forward-auth --log-token first to discover the client ID, " +
+            "then pass it via --public-client-id or PUBLIC_CLIENT_ID environment variable.");
 
     // Scopes can be provided explicitly or discovered from RFC 9728 metadata
     var scopeValue = Environment.GetEnvironmentVariable("AZURE_SCOPES")
@@ -154,7 +156,7 @@ switch (authModeType)
         break;
     case AuthModeType.UserAuth:
         // USER-AUTH MODE: stdio transport, proxy authenticates as current user
-        await RunUserAuthModeAsync(tenantId, vsCodeClientId!, scopes, teamsServerUrl).ConfigureAwait(false);
+        await RunUserAuthModeAsync(tenantId, publicClientId!, scopes, teamsServerUrl).ConfigureAwait(false);
         break;
     default:
         // FORWARD-AUTH MODE: HTTP transport, VS Code handles Azure AD authentication
@@ -256,14 +258,14 @@ async Task RunProxyAuthModeAsync(string tenantId, string clientId, string client
 // On first run a browser window opens for sign-in. Subsequent runs use the
 // cached refresh token silently (typically valid for ~90 days).
 // ═══════════════════════════════════════════════════════════════════════════
-async Task RunUserAuthModeAsync(string tenantId, string vsCodeClientId, string[]? scopes, string teamsServerUrl)
+async Task RunUserAuthModeAsync(string tenantId, string publicClientId, string[]? scopes, string teamsServerUrl)
 {
     Console.Error.WriteLine("═══════════════════════════════════════════════════════════════════════════");
     Console.Error.WriteLine("Teams Integration Sample - USER-AUTH MODE (stdio)");
     Console.Error.WriteLine("═══════════════════════════════════════════════════════════════════════════");
     Console.Error.WriteLine();
     Console.Error.WriteLine($"Tenant ID:         {tenantId}");
-    Console.Error.WriteLine($"VS Code Client ID: {vsCodeClientId}");
+    Console.Error.WriteLine($"Public Client ID:  {publicClientId}");
     Console.Error.WriteLine();
 
     // ── Step 1: Discover scopes from RFC 9728 metadata if not provided ──
@@ -293,77 +295,50 @@ async Task RunUserAuthModeAsync(string tenantId, string vsCodeClientId, string[]
 
     Console.Error.WriteLine();
 
-    // ── Step 2: Create credential with persistent token cache ──
-    // InteractiveBrowserCredential opens the system browser for sign-in on first use.
-    // After authentication, the refresh token is persisted to the OS credential store
-    // (Windows Credential Manager / macOS Keychain / Linux libsecret) so subsequent
-    // runs are completely silent.
-    var credential = new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions
-    {
-        ClientId = vsCodeClientId,
-        TenantId = tenantId,
-        TokenCachePersistenceOptions = new TokenCachePersistenceOptions
-        {
-            Name = "mcp-proxy-teams"
-        },
-        RedirectUri = new Uri("http://localhost")
-    });
-
-    // ── Step 3: Pre-authenticate before starting the MCP server ──
-    // This ensures we have a valid token before accepting client connections.
-    // On first run: opens browser. On subsequent runs: silent refresh.
-    //
-    // IMPORTANT: Run with --login first to cache the token interactively:
-    //   dotnet run -- --auth-mode=user-auth --vscode-client-id=... --login
-    // After that, OpenCode (or any stdio client) can launch the proxy and
-    // it will authenticate silently using the cached refresh token.
-    Console.Error.WriteLine("Authenticating with Azure AD...");
-
+    // ── Step 2: Handle --login (optional pre-authentication) ──
+    // Run with --login to cache the token interactively before using with OpenCode:
+    //   dotnet run -- --auth-mode=user-auth --public-client-id=... --login
     if (loginOnly)
     {
-        Console.Error.WriteLine("Login-only mode (--login): will authenticate and exit.");
+        Console.Error.WriteLine("Login-only mode (--login): authenticating and exiting.");
         Console.Error.WriteLine("A browser window will open for sign-in.");
-    }
-    else
-    {
-        Console.Error.WriteLine("Using cached credentials (run with --login first if this hangs).");
-    }
-
-    Console.Error.WriteLine();
-
-    try
-    {
-        var tokenContext = new Azure.Core.TokenRequestContext(scopes);
-        var token = await credential.GetTokenAsync(tokenContext).ConfigureAwait(false);
-
-        // Decode the token to show who we authenticated as
-        var upn = TokenLoggerExtensions.DecodeUpnFromToken(token.Token);
-        Console.Error.WriteLine($"Authenticated as: {upn ?? "(unknown)"}");
-        Console.Error.WriteLine($"Token expires:    {token.ExpiresOn:yyyy-MM-dd HH:mm:ss K}");
-    }
-    catch (AuthenticationFailedException ex)
-    {
-        Console.Error.WriteLine($"Authentication failed: {ex.Message}");
         Console.Error.WriteLine();
-        Console.Error.WriteLine("Troubleshooting:");
-        Console.Error.WriteLine("  1. Run with --login first to authenticate interactively");
-        Console.Error.WriteLine("  2. Ensure the VS Code client ID is correct (use --log-token in forward-auth mode to discover it)");
-        Console.Error.WriteLine("  3. Check that your tenant ID is correct");
-        throw;
-    }
 
-    // If --login was passed, we're done — just cache the token and exit
-    if (loginOnly)
-    {
-        Console.Error.WriteLine();
-        Console.Error.WriteLine("Login successful! Token cached. You can now run without --login.");
-        Console.Error.WriteLine("The cached token will be refreshed silently for ~90 days.");
+        var credential = new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions
+        {
+            ClientId = publicClientId,
+            TenantId = tenantId,
+            TokenCachePersistenceOptions = new TokenCachePersistenceOptions
+            {
+                Name = "mcp-proxy-teams"
+            },
+            RedirectUri = new Uri("http://localhost")
+        });
+
+        try
+        {
+            var tokenContext = new Azure.Core.TokenRequestContext(scopes);
+            var token = await credential.GetTokenAsync(tokenContext).ConfigureAwait(false);
+            var upn = TokenLoggerExtensions.DecodeUpnFromToken(token.Token);
+            Console.Error.WriteLine($"Authenticated as: {upn ?? "(unknown)"}");
+            Console.Error.WriteLine($"Token expires:    {token.ExpiresOn:yyyy-MM-dd HH:mm:ss K}");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Login successful! Token cached. You can now run without --login.");
+            Console.Error.WriteLine("The cached token will be refreshed silently for ~90 days.");
+        }
+        catch (AuthenticationFailedException ex)
+        {
+            Console.Error.WriteLine($"Authentication failed: {ex.Message}");
+            throw;
+        }
+
         return;
     }
 
-    Console.Error.WriteLine();
-
-    // ── Step 4: Configure the proxy ──
+    // ── Step 3: Configure the proxy ──
+    // Uses the built-in InteractiveBrowser backend auth type from the SDK.
+    // The SDK creates an InteractiveBrowserCredential with persistent token cache
+    // and handles token acquisition/refresh automatically on every outbound request.
     var builder = Host.CreateApplicationBuilder(args);
 
     // Configure logging to stderr (stdout is used for MCP messages)
@@ -377,9 +352,8 @@ async Task RunUserAuthModeAsync(string tenantId, string vsCodeClientId, string[]
     // Add Teams integration services
     var teamsContext = builder.Services.AddTeamsIntegration(ConfigureTeamsIntegration);
 
-    // Configure MCP Proxy with DefaultAzureCredential backend auth + injected credential.
-    // The InteractiveBrowserCredential handles token refresh automatically — MSAL uses
-    // the cached refresh token to silently acquire new access tokens as they expire.
+    // Configure MCP Proxy with built-in InteractiveBrowser auth.
+    // The SDK handles credential creation, persistent caching, and token refresh.
     builder.Services.AddMcpProxy(proxy =>
     {
         proxy.WithServerInfo("Teams Integration Sample", "1.0.0",
@@ -390,11 +364,12 @@ async Task RunUserAuthModeAsync(string tenantId, string vsCodeClientId, string[]
             .WithTitle("Microsoft Teams")
             .WithDescription("Microsoft Teams MCP Server for chat, messaging, and collaboration")
             .WithToolPrefix("teams")
-            .WithBackendAuth(BackendAuthType.AzureDefaultCredential, azureAd =>
+            .WithBackendAuth(BackendAuthType.InteractiveBrowser, azureAd =>
             {
+                azureAd.ClientId = publicClientId;
                 azureAd.TenantId = tenantId;
                 azureAd.Scopes = scopes;
-                azureAd.TokenCredential = credential;
+                azureAd.TokenCacheName = "mcp-proxy-teams";
             })
             .Build();
 
@@ -895,7 +870,7 @@ internal static class TokenLoggerExtensions
             Console.Error.WriteLine($"  iss   (Issuer):      {issuer}");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Use these values for user-auth mode:");
-            Console.Error.WriteLine($"  --auth-mode=user-auth --vscode-client-id={appId}");
+            Console.Error.WriteLine($"  --auth-mode=user-auth --public-client-id={appId}");
 
             // If scopes were found, suggest them too
             if (scopes != "(not found)")

@@ -2,6 +2,7 @@ using McpProxy.Sdk.Authentication;
 using McpProxy.Sdk.Configuration;
 using McpProxy.Sdk.Debugging;
 using McpProxy.Sdk.Logging;
+using Azure.Identity;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
@@ -407,6 +408,12 @@ public sealed class McpClientManager : IAsyncDisposable
             return CreateDefaultAzureCredentialHttpClient(authConfig);
         }
 
+        // Handle InteractiveBrowser - uses InteractiveBrowserCredential from Azure.Identity
+        if (authConfig.Type == BackendAuthType.InteractiveBrowser)
+        {
+            return CreateInteractiveBrowserHttpClient(authConfig);
+        }
+
         var credentialProvider = new AzureAdCredentialProvider(
             authConfig.AzureAd,
             authConfig.Type,
@@ -456,6 +463,56 @@ public sealed class McpClientManager : IAsyncDisposable
     {
         var scopes = authConfig.AzureAd.Scopes ?? [".default"];
         var credential = authConfig.AzureAd.TokenCredential;
+        var handler = new DefaultAzureCredentialAuthHandler(
+            scopes,
+            _loggerFactory.CreateLogger<DefaultAzureCredentialAuthHandler>(),
+            credential);
+
+        return new HttpClient(handler);
+    }
+
+    /// <summary>
+    /// Creates an HTTP client that acquires user-delegated tokens via <see cref="InteractiveBrowserCredential"/>.
+    /// Opens a browser for sign-in on first use; subsequent requests use cached refresh tokens persisted
+    /// to the OS credential store. This enables non-OAuth MCP clients (stdio) to access backends that
+    /// require a pre-authorized public client ID (e.g., Microsoft 365 MCP servers).
+    /// </summary>
+    private HttpClient CreateInteractiveBrowserHttpClient(BackendAuthConfiguration authConfig)
+    {
+        var config = authConfig.AzureAd;
+        var scopes = config.Scopes ?? [".default"];
+
+        if (string.IsNullOrEmpty(config.ClientId))
+        {
+            throw new InvalidOperationException(
+                "InteractiveBrowser authentication requires a ClientId (the public client app ID). " +
+                "Set 'auth.azureAd.clientId' in the server configuration.");
+        }
+
+        var credentialOptions = new InteractiveBrowserCredentialOptions
+        {
+            ClientId = config.ClientId,
+            TokenCachePersistenceOptions = new TokenCachePersistenceOptions
+            {
+                Name = config.TokenCacheName ?? "mcp-proxy"
+            }
+        };
+
+        if (!string.IsNullOrEmpty(config.TenantId))
+        {
+            credentialOptions.TenantId = config.TenantId;
+        }
+
+        if (!string.IsNullOrEmpty(config.RedirectUri))
+        {
+            credentialOptions.RedirectUri = new Uri(config.RedirectUri);
+        }
+
+        var credential = new InteractiveBrowserCredential(credentialOptions);
+
+        var effectiveTenant = config.TenantId ?? "organizations";
+        ProxyLogger.InteractiveBrowserCredentialCreated(_logger, config.ClientId, effectiveTenant);
+
         var handler = new DefaultAzureCredentialAuthHandler(
             scopes,
             _loggerFactory.CreateLogger<DefaultAzureCredentialAuthHandler>(),

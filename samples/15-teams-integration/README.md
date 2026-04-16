@@ -197,7 +197,9 @@ dotnet run
 
 ### User-Auth Mode
 
-This mode authenticates as the current user by using VS Code's client ID with interactive browser login. No app registration is needed — it reuses VS Code's pre-authorized client ID.
+This mode authenticates as the current user using a pre-authorized public client ID (e.g., VS Code's app registration) with interactive browser login. No app registration of your own is needed.
+
+This uses the built-in `InteractiveBrowser` backend auth type from the SDK, which can also be configured via JSON for any MCP server (see below).
 
 ```
 Client ──(stdio, no auth)──> Proxy ──(user-delegated Bearer token)──> Teams MCP Server
@@ -207,14 +209,14 @@ Client ──(stdio, no auth)──> Proxy ──(user-delegated Bearer token)�
 ```
 
 - Proxy authenticates as the current user via interactive browser
-- Uses VS Code's Azure AD client ID (pre-authorized by the Teams MCP Server)
+- Uses a pre-authorized public client ID (discover via `--log-token` in forward-auth mode)
 - Clients connect via stdio without any authentication
 - Token is cached in OS credential store — only needs browser sign-in once (~90 day refresh token)
 - User-specific permissions and data access (same as forward-auth)
 
 #### Prerequisites
 
-1. Discover VS Code's client ID using `--log-token` in forward-auth mode (see above)
+1. Discover the public client ID using `--log-token` in forward-auth mode (see above)
 2. Your Azure AD tenant ID
 
 #### Running
@@ -225,11 +227,14 @@ cd samples/15-teams-integration
 # Using environment variables (recommended)
 $env:TENANT_ID = "your-tenant-id"
 $env:AUTH_MODE = "user-auth"
-$env:VSCODE_CLIENT_ID = "your-vscode-client-id"
+$env:PUBLIC_CLIENT_ID = "your-public-client-id"
 dotnet run
 
 # Or using command line arguments
-dotnet run -- --auth-mode=user-auth --tenant-id=your-tenant-id --vscode-client-id=your-vscode-client-id
+dotnet run -- --auth-mode=user-auth --tenant-id=your-tenant-id --public-client-id=your-public-client-id
+
+# Optional: pre-authenticate with --login (caches token, then exits)
+dotnet run -- --auth-mode=user-auth --tenant-id=your-tenant-id --public-client-id=your-public-client-id --login
 
 # Optional: provide scopes explicitly (auto-discovered from RFC 9728 metadata if omitted)
 $env:AZURE_SCOPES = "ea9ffc3e-8a23-4a7d-836d-234d7c7565c1/.default"
@@ -247,7 +252,7 @@ dotnet run
       "env": {
         "TENANT_ID": "your-tenant-id",
         "AUTH_MODE": "user-auth",
-        "VSCODE_CLIENT_ID": "your-vscode-client-id"
+        "PUBLIC_CLIENT_ID": "your-public-client-id"
       },
       "enabled": true
     }
@@ -267,11 +272,66 @@ dotnet run
       "env": {
         "TENANT_ID": "your-tenant-id",
         "AUTH_MODE": "user-auth",
-        "VSCODE_CLIENT_ID": "your-vscode-client-id"
+        "PUBLIC_CLIENT_ID": "your-public-client-id"
       }
     }
   }
 }
+```
+
+#### Using JSON Configuration (without custom code)
+
+Since `InteractiveBrowser` is a built-in SDK auth type, you can also configure it
+directly in `mcp-proxy.json` and use the `mcpproxy` CLI tool. This works for any
+MCP server that uses the same OAuth pattern (Teams, Mail, Calendar, etc.):
+
+```json
+{
+  "mcp": {
+    "teams": {
+      "type": "http",
+      "url": "https://agent365.svc.cloud.microsoft/agents/tenants/${TENANT_ID}/servers/mcp_TeamsServer",
+      "auth": {
+        "type": "InteractiveBrowser",
+        "azureAd": {
+          "clientId": "${PUBLIC_CLIENT_ID}",
+          "tenantId": "${TENANT_ID}",
+          "scopes": ["ea9ffc3e-8a23-4a7d-836d-234d7c7565c1/.default"]
+        }
+      }
+    },
+    "mail": {
+      "type": "http",
+      "url": "https://agent365.svc.cloud.microsoft/agents/tenants/${TENANT_ID}/servers/mcp_MailTools",
+      "auth": {
+        "type": "InteractiveBrowser",
+        "azureAd": {
+          "clientId": "${PUBLIC_CLIENT_ID}",
+          "tenantId": "${TENANT_ID}",
+          "scopes": ["ea9ffc3e-8a23-4a7d-836d-234d7c7565c1/.default"]
+        }
+      }
+    },
+    "calendar": {
+      "type": "http",
+      "url": "https://agent365.svc.cloud.microsoft/agents/tenants/${TENANT_ID}/servers/mcp_CalendarTools",
+      "auth": {
+        "type": "InteractiveBrowser",
+        "azureAd": {
+          "clientId": "${PUBLIC_CLIENT_ID}",
+          "tenantId": "${TENANT_ID}",
+          "scopes": ["ea9ffc3e-8a23-4a7d-836d-234d7c7565c1/.default"]
+        }
+      }
+    }
+  }
+}
+```
+
+Then run with the standard CLI:
+
+```bash
+mcpproxy -t stdio -c mcp-proxy.json
 ```
 
 ## Environment Variables
@@ -282,7 +342,7 @@ dotnet run
 | `AUTH_MODE` | No | All | `forward-auth` (default), `proxy-auth`, or `user-auth` |
 | `PORT` | No | forward-auth | HTTP port (default: 5100) |
 | `LOG_TOKEN` | No | forward-auth | Set to `true` to log JWT claims from the first authenticated request |
-| `VSCODE_CLIENT_ID` | Yes | user-auth | VS Code's Azure AD client ID (discover via `--log-token`) |
+| `PUBLIC_CLIENT_ID` | Yes | user-auth | Pre-authorized public client ID (discover via `--log-token`). Also accepts `VSCODE_CLIENT_ID` for backward compatibility |
 | `AZURE_CLIENT_ID` | Yes | proxy-auth | App registration client ID |
 | `AZURE_CLIENT_SECRET` | Yes | proxy-auth | App registration client secret |
 | `AZURE_SCOPES` | No | proxy-auth, user-auth | Comma-separated scopes (auto-discovered from RFC 9728 metadata in user-auth mode) |

@@ -461,4 +461,9 @@ public static partial class ProxyLogger
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Failed to acquire token via DefaultAzureCredential")]
     public static partial void DefaultAzureCredentialTokenFailed(ILogger logger, Exception exception);
+
+    // === Interactive Browser ===
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Interactive browser credential created for client '{ClientId}' in tenant '{TenantId}'. Browser sign-in may be required on first use.")]
+    public static partial void InteractiveBrowserCredentialCreated(ILogger logger, string clientId, string tenantId);
 }
