@@ -4,12 +4,13 @@ This sample demonstrates how to use MCP-Proxy's SDK features (hooks, interceptor
 
 ## Authentication Modes
 
-This sample supports two authentication modes:
+This sample supports three authentication modes:
 
 | Mode | Transport | Auth Handling | Best For |
 |------|-----------|---------------|----------|
 | **forward-auth** (default) | HTTP/SSE | VS Code authenticates with Azure AD, proxy forwards auth header | Interactive use, user-specific permissions |
 | **proxy-auth** | stdio | Proxy authenticates with Azure AD using app credentials | Automated agents, scripts, simplified client setup |
+| **user-auth** | stdio | Proxy authenticates as the current user via interactive browser | Non-OAuth clients (OpenCode, etc.), user-specific permissions without VS Code |
 
 ### Forward-Auth Mode (Default)
 
@@ -89,6 +90,45 @@ dotnet run -- --tenant-id=your-tenant-id
 dotnet run -- --tenant-id=your-tenant-id --port=5200
 ```
 
+#### Discovering Token Claims (--log-token)
+
+When building a user-auth integration (e.g., connecting from a client that does not
+support OAuth like OpenCode), you need to know VS Code's client ID, the audience, and
+the scopes that the Teams MCP Server requires. Pass `--log-token` to log the JWT claims
+from the first authenticated request VS Code makes:
+
+```bash
+dotnet run -- --tenant-id=your-tenant-id --log-token
+```
+
+Or set the environment variable:
+
+```bash
+$env:LOG_TOKEN = "true"
+dotnet run -- --tenant-id=your-tenant-id
+```
+
+After VS Code connects and authenticates, the proxy logs the token claims to stderr:
+
+```
+═══════════════════════════════════════════════════════════════════════════
+TOKEN CLAIMS (from VS Code's first authenticated request)
+═══════════════════════════════════════════════════════════════════════════
+  appid (Client ID):   aebc6443-996d-45c2-90f0-388ff96faa56
+  aud   (Audience):    api://teams-mcp-server/...
+  scp   (Scopes):      TeamsActivity.Send Chat.ReadWrite ...
+  tid   (Tenant ID):   your-tenant-id
+  upn   (User):        user@company.com
+  iss   (Issuer):      https://sts.windows.net/your-tenant-id/
+
+Use these values for user-auth mode:
+  --auth-mode=user-auth --vscode-client-id=aebc6443-996d-45c2-90f0-388ff96faa56
+  --scopes=api://teams-mcp-server/TeamsActivity.Send,...
+═══════════════════════════════════════════════════════════════════════════
+```
+
+Use the logged `appid` value as the `--vscode-client-id` for user-auth mode.
+
 **VS Code Configuration** (`.vscode/mcp.json`):
 
 ```json
@@ -155,16 +195,97 @@ dotnet run
 }
 ```
 
+### User-Auth Mode
+
+This mode authenticates as the current user by using VS Code's client ID with interactive browser login. No app registration is needed — it reuses VS Code's pre-authorized client ID.
+
+```
+Client ──(stdio, no auth)──> Proxy ──(user-delegated Bearer token)──> Teams MCP Server
+                              │
+                              ├─ First run: opens browser for sign-in
+                              └─ Subsequent runs: silent (cached refresh token)
+```
+
+- Proxy authenticates as the current user via interactive browser
+- Uses VS Code's Azure AD client ID (pre-authorized by the Teams MCP Server)
+- Clients connect via stdio without any authentication
+- Token is cached in OS credential store — only needs browser sign-in once (~90 day refresh token)
+- User-specific permissions and data access (same as forward-auth)
+
+#### Prerequisites
+
+1. Discover VS Code's client ID using `--log-token` in forward-auth mode (see above)
+2. Your Azure AD tenant ID
+
+#### Running
+
+```bash
+cd samples/15-teams-integration
+
+# Using environment variables (recommended)
+$env:TENANT_ID = "your-tenant-id"
+$env:AUTH_MODE = "user-auth"
+$env:VSCODE_CLIENT_ID = "your-vscode-client-id"
+dotnet run
+
+# Or using command line arguments
+dotnet run -- --auth-mode=user-auth --tenant-id=your-tenant-id --vscode-client-id=your-vscode-client-id
+
+# Optional: provide scopes explicitly (auto-discovered from RFC 9728 metadata if omitted)
+$env:AZURE_SCOPES = "ea9ffc3e-8a23-4a7d-836d-234d7c7565c1/.default"
+dotnet run
+```
+
+**OpenCode Configuration** (`opencode.json`):
+
+```json
+{
+  "mcp": {
+    "teams-proxy": {
+      "type": "local",
+      "command": ["dotnet", "run", "--project", "path/to/samples/15-teams-integration"],
+      "env": {
+        "TENANT_ID": "your-tenant-id",
+        "AUTH_MODE": "user-auth",
+        "VSCODE_CLIENT_ID": "your-vscode-client-id"
+      },
+      "enabled": true
+    }
+  }
+}
+```
+
+**VS Code Configuration** (`.vscode/mcp.json`):
+
+```json
+{
+  "servers": {
+    "teams-proxy": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": ["run", "--project", "path/to/samples/15-teams-integration"],
+      "env": {
+        "TENANT_ID": "your-tenant-id",
+        "AUTH_MODE": "user-auth",
+        "VSCODE_CLIENT_ID": "your-vscode-client-id"
+      }
+    }
+  }
+}
+```
+
 ## Environment Variables
 
 | Variable | Required | Mode | Description |
 |----------|----------|------|-------------|
-| `TENANT_ID` | Yes | Both | Azure AD tenant ID |
-| `AUTH_MODE` | No | Both | `forward-auth` (default) or `proxy-auth` |
+| `TENANT_ID` | Yes | All | Azure AD tenant ID |
+| `AUTH_MODE` | No | All | `forward-auth` (default), `proxy-auth`, or `user-auth` |
 | `PORT` | No | forward-auth | HTTP port (default: 5100) |
+| `LOG_TOKEN` | No | forward-auth | Set to `true` to log JWT claims from the first authenticated request |
+| `VSCODE_CLIENT_ID` | Yes | user-auth | VS Code's Azure AD client ID (discover via `--log-token`) |
 | `AZURE_CLIENT_ID` | Yes | proxy-auth | App registration client ID |
 | `AZURE_CLIENT_SECRET` | Yes | proxy-auth | App registration client secret |
-| `AZURE_SCOPES` | No | proxy-auth | Comma-separated scopes (default: `https://graph.microsoft.com/.default`) |
+| `AZURE_SCOPES` | No | proxy-auth, user-auth | Comma-separated scopes (auto-discovered from RFC 9728 metadata in user-auth mode) |
 
 ## Configuration Options
 
@@ -269,6 +390,36 @@ Pre-check message for credentials.
                             │ SSE with Bearer token
 ┌───────────────────────────▼─────────────────────────────────┐
 │                    Teams MCP Server                          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### User-Auth Mode
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  OpenCode / Any MCP Client                    │
+│                                                              │
+│  Connects via stdio - no authentication required             │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ stdio (no auth)
+┌───────────────────────────▼─────────────────────────────────┐
+│                   MCP Proxy (stdio)                          │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │         InteractiveBrowserCredential                 │    │
+│  │    (VS Code's client ID, persistent token cache)     │    │
+│  │    First run: opens browser for sign-in              │    │
+│  │    Subsequent: silent (cached refresh token)         │    │
+│  └─────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │         DefaultAzureCredentialAuthHandler             │    │
+│  │    (adds user-delegated Bearer token to requests)    │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                        ... hooks, cache, etc ...             │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ HTTP with user-delegated Bearer token
+┌───────────────────────────▼─────────────────────────────────┐
+│                    Teams MCP Server                          │
+│  Token has appid = VS Code's client ID (pre-authorized)      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
