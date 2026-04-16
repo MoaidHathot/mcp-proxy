@@ -78,6 +78,8 @@ var includeVirtualTools = args.Contains("--include-virtual", StringComparer.Ordi
 var logToken = args.Contains("--log-token", StringComparer.OrdinalIgnoreCase)
     || string.Equals(Environment.GetEnvironmentVariable("LOG_TOKEN"), "true", StringComparison.OrdinalIgnoreCase);
 
+var loginOnly = args.Contains("--login", StringComparer.OrdinalIgnoreCase);
+
 // Validate auth mode
 var authModeType = authMode switch
 {
@@ -310,8 +312,23 @@ async Task RunUserAuthModeAsync(string tenantId, string vsCodeClientId, string[]
     // ── Step 3: Pre-authenticate before starting the MCP server ──
     // This ensures we have a valid token before accepting client connections.
     // On first run: opens browser. On subsequent runs: silent refresh.
+    //
+    // IMPORTANT: Run with --login first to cache the token interactively:
+    //   dotnet run -- --auth-mode=user-auth --vscode-client-id=... --login
+    // After that, OpenCode (or any stdio client) can launch the proxy and
+    // it will authenticate silently using the cached refresh token.
     Console.Error.WriteLine("Authenticating with Azure AD...");
-    Console.Error.WriteLine("If this is your first time, a browser window will open for sign-in.");
+
+    if (loginOnly)
+    {
+        Console.Error.WriteLine("Login-only mode (--login): will authenticate and exit.");
+        Console.Error.WriteLine("A browser window will open for sign-in.");
+    }
+    else
+    {
+        Console.Error.WriteLine("Using cached credentials (run with --login first if this hangs).");
+    }
+
     Console.Error.WriteLine();
 
     try
@@ -329,10 +346,19 @@ async Task RunUserAuthModeAsync(string tenantId, string vsCodeClientId, string[]
         Console.Error.WriteLine($"Authentication failed: {ex.Message}");
         Console.Error.WriteLine();
         Console.Error.WriteLine("Troubleshooting:");
-        Console.Error.WriteLine("  1. Ensure the VS Code client ID is correct (use --log-token in forward-auth mode to discover it)");
-        Console.Error.WriteLine("  2. Check that your tenant ID is correct");
-        Console.Error.WriteLine("  3. Verify that the browser opened and you completed the sign-in");
+        Console.Error.WriteLine("  1. Run with --login first to authenticate interactively");
+        Console.Error.WriteLine("  2. Ensure the VS Code client ID is correct (use --log-token in forward-auth mode to discover it)");
+        Console.Error.WriteLine("  3. Check that your tenant ID is correct");
         throw;
+    }
+
+    // If --login was passed, we're done — just cache the token and exit
+    if (loginOnly)
+    {
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("Login successful! Token cached. You can now run without --login.");
+        Console.Error.WriteLine("The cached token will be refreshed silently for ~90 days.");
+        return;
     }
 
     Console.Error.WriteLine();
