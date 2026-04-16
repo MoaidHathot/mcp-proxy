@@ -9,7 +9,6 @@
     <!-- NuGet Package Configuration -->
     <IsPackable>true</IsPackable>
     <PackageId>McpProxy.Sdk</PackageId>
-    <Version>1.3.0</Version>
     <Description>Core library for MCP Proxy - aggregates multiple MCP servers with support for hooks, filters, authentication, and routing.</Description>
     <PackageTags>mcp;model-context-protocol;proxy;core;library</PackageTags>
     <PackageProjectUrl>https://github.com/MoaidHathot/mcp-proxy</PackageProjectUrl>

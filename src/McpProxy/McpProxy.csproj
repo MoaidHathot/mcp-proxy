@@ -11,10 +11,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>mcpproxy</ToolCommandName>
     <PackageId>McpProxy</PackageId>
-    <Version>1.3.0</Version>
-    <Authors>Moaid Hathot</Authors>
     <Company>Moaid Hathot</Company>
-    <Product>MCP Proxy</Product>
     <Description>An MCP (Model Context Protocol) proxy server that aggregates multiple MCP servers into a single endpoint. Connect to multiple backend MCP servers (STDIO or HTTP/SSE) and expose all their tools through one unified interface.</Description>
     <PackageTags>mcp;model-context-protocol;proxy;ai;llm;tools;claude;copilot;opencode</PackageTags>
     <PackageProjectUrl>https://github.com/MoaidHathot/mcp-proxy</PackageProjectUrl>
