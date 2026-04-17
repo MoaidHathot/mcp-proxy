@@ -466,4 +466,7 @@ public static partial class ProxyLogger
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Interactive browser credential created for client '{ClientId}' in tenant '{TenantId}'. Browser sign-in may be required on first use.")]
     public static partial void InteractiveBrowserCredentialCreated(ILogger logger, string clientId, string tenantId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Reusing shared interactive browser credential from group '{GroupName}'")]
+    public static partial void InteractiveBrowserCredentialReused(ILogger logger, string groupName);
 }

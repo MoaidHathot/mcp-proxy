@@ -168,6 +168,14 @@ public sealed class BackendAuthConfiguration
     public BackendAuthType Type { get; set; } = BackendAuthType.None;
 
     /// <summary>
+    /// Gets or sets the credential group name. Backends with the same credential group
+    /// share a single credential instance, avoiding duplicate authentication prompts.
+    /// Applies to <see cref="BackendAuthType.InteractiveBrowser"/> auth type.
+    /// When not set, each backend gets its own credential instance.
+    /// </summary>
+    public string? CredentialGroup { get; set; }
+
+    /// <summary>
     /// Gets or sets the Azure AD configuration for backend authentication.
     /// </summary>
     public BackendAzureAdConfiguration AzureAd { get; set; } = new();

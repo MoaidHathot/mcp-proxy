@@ -276,22 +276,39 @@ separately (see [HTTP Mode](#http-mode-per-server-routing) above).
 
 ## How Token Sharing Works
 
-All four backends share the same:
+All four backends are configured with the same `credentialGroup: "m365"` in their auth
+config. This tells the proxy to share a single `InteractiveBrowserCredential` instance
+across all backends in the group, resulting in **one browser sign-in** regardless of how
+many backends are configured.
+
+```json
+"auth": {
+  "type": "InteractiveBrowser",
+  "credentialGroup": "m365",
+  "azureAd": { "..." }
+}
+```
+
+Additionally, all four backends share the same:
 - Public client ID (`PUBLIC_CLIENT_ID`)
 - Tenant (`TENANT_ID`)
 - Audience/scopes (`AZURE_AUDIENCE/.default`)
 - Persistent token cache (default name: `mcp-proxy`)
 
 This means:
-1. **First request** to any backend triggers a browser sign-in
-2. The token is cached in the OS credential store (Windows Credential Manager, macOS Keychain, etc.)
-3. **All subsequent requests** to any backend reuse the cached token silently
-4. The cached refresh token is valid for approximately 90 days
+1. **First backend** to connect triggers a browser sign-in (one prompt only)
+2. **Remaining backends** reuse the same credential instance — no additional prompts
+3. The token is cached in the OS credential store (Windows Credential Manager, macOS Keychain, etc.)
+4. **Across restarts**, the cached refresh token is used silently (~90 day lifetime)
 5. After expiry, the next request triggers a new browser sign-in automatically
+
+If `credentialGroup` is omitted, each backend gets its own credential instance and may
+trigger separate browser prompts.
 
 ## Adding More Servers
 
-To add another Microsoft 365 MCP server, copy any server block and change the `url` and `route`:
+To add another Microsoft 365 MCP server, copy any server block and change the `url` and `route`.
+Include the same `credentialGroup` to share the credential:
 
 ```json
 "sharepoint": {
@@ -303,6 +320,7 @@ To add another Microsoft 365 MCP server, copy any server block and change the `u
   "enabled": true,
   "auth": {
     "type": "InteractiveBrowser",
+    "credentialGroup": "m365",
     "azureAd": {
       "clientId": "${PUBLIC_CLIENT_ID}",
       "tenantId": "${TENANT_ID}",
@@ -312,7 +330,8 @@ To add another Microsoft 365 MCP server, copy any server block and change the `u
 }
 ```
 
-All servers sharing the same `clientId`, `tenantId`, and `scopes` will share the cached token automatically.
+Servers with the same `credentialGroup` share a single credential. Servers with a
+different group (or no group) get their own independent credentials.
 
 ## Environment Variables
 

@@ -23,6 +23,7 @@ public sealed class McpClientManager : IAsyncDisposable
     private readonly IHttpContextAccessor? _httpContextAccessor;
     private readonly Dictionary<string, McpClientInfo> _clients = [];
     private readonly Dictionary<string, ServerConfiguration> _deferredClients = [];
+    private readonly Dictionary<string, InteractiveBrowserCredential> _sharedCredentials = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<IDisposable> _disposables = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
     private ClientCapabilitySettings? _capabilitySettings;
@@ -489,29 +490,44 @@ public sealed class McpClientManager : IAsyncDisposable
                 "Set 'auth.azureAd.clientId' in the server configuration.");
         }
 
-        var credentialOptions = new InteractiveBrowserCredentialOptions
+        // Check if a shared credential already exists for this credential group
+        var groupName = authConfig.CredentialGroup;
+        if (groupName is not null && _sharedCredentials.TryGetValue(groupName, out var credential))
         {
-            ClientId = config.ClientId,
-            TokenCachePersistenceOptions = new TokenCachePersistenceOptions
+            ProxyLogger.InteractiveBrowserCredentialReused(_logger, groupName);
+        }
+        else
+        {
+            var credentialOptions = new InteractiveBrowserCredentialOptions
             {
-                Name = config.TokenCacheName ?? "mcp-proxy"
+                ClientId = config.ClientId,
+                TokenCachePersistenceOptions = new TokenCachePersistenceOptions
+                {
+                    Name = config.TokenCacheName ?? "mcp-proxy"
+                }
+            };
+
+            if (!string.IsNullOrEmpty(config.TenantId))
+            {
+                credentialOptions.TenantId = config.TenantId;
             }
-        };
 
-        if (!string.IsNullOrEmpty(config.TenantId))
-        {
-            credentialOptions.TenantId = config.TenantId;
+            if (!string.IsNullOrEmpty(config.RedirectUri))
+            {
+                credentialOptions.RedirectUri = new Uri(config.RedirectUri);
+            }
+
+            credential = new InteractiveBrowserCredential(credentialOptions);
+
+            var effectiveTenant = config.TenantId ?? "organizations";
+            ProxyLogger.InteractiveBrowserCredentialCreated(_logger, config.ClientId, effectiveTenant);
+
+            // Store in shared cache if a credential group is specified
+            if (groupName is not null)
+            {
+                _sharedCredentials[groupName] = credential;
+            }
         }
-
-        if (!string.IsNullOrEmpty(config.RedirectUri))
-        {
-            credentialOptions.RedirectUri = new Uri(config.RedirectUri);
-        }
-
-        var credential = new InteractiveBrowserCredential(credentialOptions);
-
-        var effectiveTenant = config.TenantId ?? "organizations";
-        ProxyLogger.InteractiveBrowserCredentialCreated(_logger, config.ClientId, effectiveTenant);
 
         var handler = new DefaultAzureCredentialAuthHandler(
             scopes,
