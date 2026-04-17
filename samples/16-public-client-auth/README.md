@@ -85,11 +85,15 @@ Endpoints:
 
 | URL | Backend |
 |-----|---------|
-| `http://localhost:5200/calendar` | Microsoft 365 Calendar |
-| `http://localhost:5200/copilot` | Microsoft 365 Copilot |
-| `http://localhost:5200/mail` | Microsoft 365 Mail |
-| `http://localhost:5200/me` | Microsoft 365 Me / Profile |
+| `http://localhost:5200/mcp/calendar` | Microsoft 365 Calendar |
+| `http://localhost:5200/mcp/copilot` | Microsoft 365 Copilot |
+| `http://localhost:5200/mcp/mail` | Microsoft 365 Mail |
+| `http://localhost:5200/mcp/me` | Microsoft 365 Me / Profile |
 | `http://localhost:5200/mcp/` | Discovery (lists all servers) |
+
+Endpoints follow the pattern `{basePath}/{serverName}`. The `basePath` defaults to `/mcp`
+and can be changed in the config. Individual servers can override their route with the
+`route` property.
 
 ### Stdio Mode
 
@@ -227,22 +231,22 @@ separately (see [HTTP Mode](#http-mode-per-server-routing) above).
   "mcp": {
     "m365-calendar": {
       "type": "remote",
-      "url": "http://localhost:5200/calendar",
+      "url": "http://localhost:5200/mcp/calendar",
       "enabled": true
     },
     "m365-mail": {
       "type": "remote",
-      "url": "http://localhost:5200/mail",
+      "url": "http://localhost:5200/mcp/mail",
       "enabled": true
     },
     "m365-copilot": {
       "type": "remote",
-      "url": "http://localhost:5200/copilot",
+      "url": "http://localhost:5200/mcp/copilot",
       "enabled": true
     },
     "m365-me": {
       "type": "remote",
-      "url": "http://localhost:5200/me",
+      "url": "http://localhost:5200/mcp/me",
       "enabled": true
     }
   }
@@ -256,58 +260,97 @@ separately (see [HTTP Mode](#http-mode-per-server-routing) above).
   "servers": {
     "m365-calendar": {
       "type": "http",
-      "url": "http://localhost:5200/calendar"
+      "url": "http://localhost:5200/mcp/calendar"
     },
     "m365-mail": {
       "type": "http",
-      "url": "http://localhost:5200/mail"
+      "url": "http://localhost:5200/mcp/mail"
     },
     "m365-copilot": {
       "type": "http",
-      "url": "http://localhost:5200/copilot"
+      "url": "http://localhost:5200/mcp/copilot"
     },
     "m365-me": {
       "type": "http",
-      "url": "http://localhost:5200/me"
+      "url": "http://localhost:5200/mcp/me"
     }
   }
 }
 ```
 
-## How Token Sharing Works
+## Config Path
+
+The `--config` / `-c` option supports environment variable expansion in the path.
+This is useful when the config file is stored in a shared location:
+
+```bash
+# Unix-style ${VAR}
+mcpproxy -t http -c '${XDG_CONFIG_HOME}/orchestra/m365.proxy.json'
+
+# Home directory shorthand
+mcpproxy -t http -c '~/orchestra/m365.proxy.json'
+
+# Windows-style %VAR%
+mcpproxy -t http -c '%USERPROFILE%/orchestra/m365.proxy.json'
+```
+
+Note: use single quotes in PowerShell to prevent the shell from expanding `${VAR}`
+before the proxy sees it.
+
+## How Credential Sharing and Deferred Connection Work
+
+### Credential Sharing (`credentialGroup`)
 
 All four backends are configured with the same `credentialGroup: "m365"` in their auth
 config. This tells the proxy to share a single `InteractiveBrowserCredential` instance
 across all backends in the group, resulting in **one browser sign-in** regardless of how
 many backends are configured.
 
+If `credentialGroup` is omitted, each backend gets its own credential instance and may
+trigger separate browser prompts.
+
+### Deferred Connection (`deferConnection`)
+
+When `deferConnection` is set to `true`, the proxy does not connect to the backend at
+startup. Instead, it connects lazily on the first client request to that backend's
+endpoint. This avoids triggering interactive browser authentication before the user
+actually needs a specific backend.
+
+When `false` (the default), all backends connect eagerly during proxy startup.
+
+### Combined configuration
+
 ```json
 "auth": {
   "type": "InteractiveBrowser",
   "credentialGroup": "m365",
+  "deferConnection": true,
   "azureAd": { "..." }
 }
 ```
 
-Additionally, all four backends share the same:
+With both options enabled:
+
+1. **Proxy starts** instantly — no backend connections, no browser prompts
+2. **First request** to e.g. `/mcp/calendar/tools/call` triggers the `calendar` backend connection
+3. Browser sign-in opens (if no cached token) — one prompt only
+4. **Subsequent requests** to other backends (e.g. `/mcp/mail`) connect lazily but reuse
+   the shared credential — no additional browser prompts
+5. The token is cached in the OS credential store (Windows Credential Manager, macOS Keychain, etc.)
+6. **Across restarts**, the cached refresh token is used silently (~90 day lifetime)
+7. After expiry, the next request triggers a new browser sign-in automatically
+
+### Token sharing across backends
+
+All four backends share the same:
 - Public client ID (`PUBLIC_CLIENT_ID`)
 - Tenant (`TENANT_ID`)
 - Audience/scopes (`AZURE_AUDIENCE/.default`)
 - Persistent token cache (default name: `mcp-proxy`)
 
-This means:
-1. **First backend** to connect triggers a browser sign-in (one prompt only)
-2. **Remaining backends** reuse the same credential instance — no additional prompts
-3. The token is cached in the OS credential store (Windows Credential Manager, macOS Keychain, etc.)
-4. **Across restarts**, the cached refresh token is used silently (~90 day lifetime)
-5. After expiry, the next request triggers a new browser sign-in automatically
-
-If `credentialGroup` is omitted, each backend gets its own credential instance and may
-trigger separate browser prompts.
-
 ## Adding More Servers
 
-To add another Microsoft 365 MCP server, copy any server block and change the `url` and `route`.
+To add another Microsoft 365 MCP server, copy any server block and change the `url`.
 Include the same `credentialGroup` to share the credential:
 
 ```json
@@ -316,11 +359,11 @@ Include the same `credentialGroup` to share the credential:
   "title": "Microsoft 365 SharePoint",
   "description": "SharePoint document and site management tools",
   "url": "https://agent365.svc.cloud.microsoft/agents/tenants/${TENANT_ID}/servers/mcp_SharePointServer",
-  "route": "/sharepoint",
   "enabled": true,
   "auth": {
     "type": "InteractiveBrowser",
     "credentialGroup": "m365",
+    "deferConnection": true,
     "azureAd": {
       "clientId": "${PUBLIC_CLIENT_ID}",
       "tenantId": "${TENANT_ID}",
@@ -340,6 +383,19 @@ different group (or no group) get their own independent credentials.
 | `TENANT_ID` | Yes | Azure AD tenant ID |
 | `PUBLIC_CLIENT_ID` | Yes | Pre-authorized public client app ID (discover via sample 15's `--log-token`) |
 | `AZURE_AUDIENCE` | Yes | Resource audience / app ID of the M365 MCP service (discover via `--log-token`) |
+
+## Auth Configuration Reference
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `type` | string | - | Auth type. Use `InteractiveBrowser` for user-delegated browser auth |
+| `credentialGroup` | string | `null` | Group name for credential sharing. Backends with the same group share one credential instance |
+| `deferConnection` | bool | `false` | When `true`, defer backend connection until the first client request (lazy auth) |
+| `azureAd.clientId` | string | - | Public client app ID (required for `InteractiveBrowser`) |
+| `azureAd.tenantId` | string | - | Azure AD tenant ID |
+| `azureAd.scopes` | string[] | `[".default"]` | OAuth scopes to request |
+| `azureAd.tokenCacheName` | string | `"mcp-proxy"` | Name for the persistent token cache in the OS credential store |
+| `azureAd.redirectUri` | string | `"http://localhost"` | Redirect URI for the OAuth flow |
 
 ## See Also
 
