@@ -176,6 +176,15 @@ public sealed class BackendAuthConfiguration
     public string? CredentialGroup { get; set; }
 
     /// <summary>
+    /// Gets or sets whether the backend connection should be deferred until the first client request.
+    /// When <c>true</c>, the proxy does not connect to the backend at startup; instead, it connects
+    /// lazily on the first request. This avoids triggering interactive authentication (e.g., browser
+    /// sign-in) at startup time.
+    /// Default is <c>false</c> (connect eagerly at startup).
+    /// </summary>
+    public bool DeferConnection { get; set; }
+
+    /// <summary>
     /// Gets or sets the Azure AD configuration for backend authentication.
     /// </summary>
     public BackendAzureAdConfiguration AzureAd { get; set; } = new();

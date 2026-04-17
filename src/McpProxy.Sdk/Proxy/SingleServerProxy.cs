@@ -73,7 +73,7 @@ public sealed class SingleServerProxy
     public async ValueTask<ListToolsResult> ListToolsAsync(
         CancellationToken cancellationToken = default)
     {
-        var clientInfo = GetClientInfo();
+        var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
         if (clientInfo is null)
         {
             return new ListToolsResult { Tools = [] };
@@ -113,7 +113,7 @@ public sealed class SingleServerProxy
         CallToolRequestParams request,
         CancellationToken cancellationToken = default)
     {
-        var clientInfo = GetClientInfo();
+        var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
         if (clientInfo is null)
         {
             return new CallToolResult
@@ -255,7 +255,7 @@ public sealed class SingleServerProxy
     public async ValueTask<ListResourcesResult> ListResourcesAsync(
         CancellationToken cancellationToken = default)
     {
-        var clientInfo = GetClientInfo();
+        var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
         if (clientInfo is null)
         {
             return new ListResourcesResult { Resources = [] };
@@ -287,7 +287,7 @@ public sealed class SingleServerProxy
         ReadResourceRequestParams request,
         CancellationToken cancellationToken = default)
     {
-        var clientInfo = GetClientInfo();
+        var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
         if (clientInfo is null)
         {
             var uri = request.Uri;
@@ -311,7 +311,7 @@ public sealed class SingleServerProxy
     public async ValueTask<ListPromptsResult> ListPromptsAsync(
         CancellationToken cancellationToken = default)
     {
-        var clientInfo = GetClientInfo();
+        var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
         if (clientInfo is null)
         {
             return new ListPromptsResult { Prompts = [] };
@@ -343,7 +343,7 @@ public sealed class SingleServerProxy
         GetPromptRequestParams request,
         CancellationToken cancellationToken = default)
     {
-        var clientInfo = GetClientInfo();
+        var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
         if (clientInfo is null)
         {
             return new GetPromptResult
@@ -373,9 +373,20 @@ public sealed class SingleServerProxy
         };
     }
 
-    private McpClientInfo? GetClientInfo()
+    private async ValueTask<McpClientInfo?> GetClientInfoAsync(CancellationToken cancellationToken = default)
     {
-        return _clientManager.Clients.TryGetValue(_serverName, out var clientInfo) ? clientInfo : null;
+        if (_clientManager.Clients.TryGetValue(_serverName, out var clientInfo))
+        {
+            return clientInfo;
+        }
+
+        // Attempt to connect a deferred client lazily on first request
+        if (await _clientManager.EnsureDeferredClientConnectedAsync(_serverName, cancellationToken).ConfigureAwait(false))
+        {
+            return _clientManager.Clients.TryGetValue(_serverName, out clientInfo) ? clientInfo : null;
+        }
+
+        return null;
     }
 
     private AuthenticationResult? GetAuthenticationResult()

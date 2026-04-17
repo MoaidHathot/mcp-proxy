@@ -87,7 +87,10 @@ public sealed class McpClientManager : IAsyncDisposable
 
                 // ForwardAuthorization backends cannot connect at startup because there is
                 // no user token available. Store them for lazy connection on first request.
-                if (serverConfig.Auth?.Type == BackendAuthType.ForwardAuthorization)
+                // Backends with DeferConnection also defer to avoid triggering interactive
+                // authentication (e.g., browser sign-in) at startup time.
+                if (serverConfig.Auth?.Type == BackendAuthType.ForwardAuthorization
+                    || serverConfig.Auth?.DeferConnection == true)
                 {
                     _deferredClients[name] = serverConfig;
                     ProxyLogger.BackendConnectionDeferred(_logger, name);
@@ -169,6 +172,62 @@ public sealed class McpClientManager : IAsyncDisposable
     /// Gets whether there are deferred clients that have not yet connected.
     /// </summary>
     public bool HasDeferredClients => _deferredClients.Count > 0;
+
+    /// <summary>
+    /// Attempts to connect a specific deferred client by name. If the client is already
+    /// connected or is not in the deferred list, this is a no-op. Used by
+    /// <see cref="SingleServerProxy"/> to lazily connect deferred backends on first request.
+    /// </summary>
+    /// <param name="serverName">The server name to connect.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns><c>true</c> if the client is now connected; <c>false</c> if connection failed.</returns>
+    public async Task<bool> EnsureDeferredClientConnectedAsync(string serverName, CancellationToken cancellationToken = default)
+    {
+        // Already connected
+        if (_clients.ContainsKey(serverName))
+        {
+            return true;
+        }
+
+        // Not deferred
+        if (!_deferredClients.ContainsKey(serverName))
+        {
+            return false;
+        }
+
+        await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Double-check after acquiring lock
+            if (_clients.ContainsKey(serverName))
+            {
+                _deferredClients.Remove(serverName);
+                return true;
+            }
+
+            if (!_deferredClients.TryGetValue(serverName, out var serverConfig))
+            {
+                return false;
+            }
+
+            try
+            {
+                var client = await CreateClientAsync(serverName, serverConfig, cancellationToken).ConfigureAwait(false);
+                _clients[serverName] = client;
+                _deferredClients.Remove(serverName);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ProxyLogger.BackendConnectionFailed(_logger, serverName, ex);
+                return false;
+            }
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
 
     /// <summary>
     /// Gets the names of backends that are still deferred (not yet connected).
