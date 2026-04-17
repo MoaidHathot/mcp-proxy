@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Text.RegularExpressions;
 using McpProxy.Sdk.Authentication;
 using McpProxy.Sdk.Configuration;
 using McpProxy.Sdk.Debugging;
@@ -61,6 +62,29 @@ async Task RunProxyAsync(TransportType transport, string? configPath, int port, 
 {
     // Resolve config path
     configPath ??= Environment.GetEnvironmentVariable("MCP_PROXY_CONFIG_PATH");
+
+    // Expand environment variables in the config path.
+    // Supports ${VAR}, $VAR, %VAR% (Windows), and ~ (home directory).
+    // This ensures the path works even when the MCP client does not expand variables.
+    if (!string.IsNullOrEmpty(configPath))
+    {
+        // Expand ~ to home directory
+        if (configPath.StartsWith('~'))
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            configPath = home + configPath[1..];
+        }
+
+        // Expand %VAR% (Windows-style) via .NET built-in
+        configPath = Environment.ExpandEnvironmentVariables(configPath);
+
+        // Expand ${VAR} and $VAR (Unix-style)
+        configPath = Regex.Replace(configPath, @"\$\{(\w+)\}|\$(\w+)", match =>
+        {
+            var varName = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+            return Environment.GetEnvironmentVariable(varName) ?? match.Value;
+        });
+    }
 
     if (string.IsNullOrEmpty(configPath))
     {
