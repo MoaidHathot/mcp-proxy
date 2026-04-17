@@ -100,11 +100,127 @@ cd samples/16-public-client-auth
 mcpproxy -t stdio -c mcp-proxy.json
 ```
 
+Use `--server` / `-s` to select specific backend(s):
+
+```bash
+# Single server
+mcpproxy -t stdio -c mcp-proxy.json -s calendar
+
+# Multiple servers
+mcpproxy -t stdio -c mcp-proxy.json -s calendar -s mail
+```
+
 ## Client Configuration
 
-### OpenCode (`opencode.json`)
+### Stdio per-server (recommended for OpenCode / VS Code)
 
-Connect to individual endpoints as remote MCP servers:
+Use `-s` to run one proxy instance per backend. Each client entry launches its own
+`mcpproxy` process with only one backend active:
+
+**VS Code** (`.vscode/mcp.json`):
+
+```json
+{
+  "servers": {
+    "m365-calendar": {
+      "type": "stdio",
+      "command": "mcpproxy",
+      "args": ["-t", "stdio", "-c", "path/to/mcp-proxy.json", "-s", "calendar"],
+      "env": {
+        "TENANT_ID": "your-tenant-id",
+        "PUBLIC_CLIENT_ID": "your-public-client-id",
+        "AZURE_AUDIENCE": "your-audience-app-id"
+      }
+    },
+    "m365-mail": {
+      "type": "stdio",
+      "command": "mcpproxy",
+      "args": ["-t", "stdio", "-c", "path/to/mcp-proxy.json", "-s", "mail"],
+      "env": {
+        "TENANT_ID": "your-tenant-id",
+        "PUBLIC_CLIENT_ID": "your-public-client-id",
+        "AZURE_AUDIENCE": "your-audience-app-id"
+      }
+    },
+    "m365-copilot": {
+      "type": "stdio",
+      "command": "mcpproxy",
+      "args": ["-t", "stdio", "-c", "path/to/mcp-proxy.json", "-s", "copilot"],
+      "env": {
+        "TENANT_ID": "your-tenant-id",
+        "PUBLIC_CLIENT_ID": "your-public-client-id",
+        "AZURE_AUDIENCE": "your-audience-app-id"
+      }
+    },
+    "m365-me": {
+      "type": "stdio",
+      "command": "mcpproxy",
+      "args": ["-t", "stdio", "-c", "path/to/mcp-proxy.json", "-s", "me"],
+      "env": {
+        "TENANT_ID": "your-tenant-id",
+        "PUBLIC_CLIENT_ID": "your-public-client-id",
+        "AZURE_AUDIENCE": "your-audience-app-id"
+      }
+    }
+  }
+}
+```
+
+**OpenCode** (`opencode.json`):
+
+```json
+{
+  "mcp": {
+    "m365-calendar": {
+      "type": "local",
+      "command": ["mcpproxy", "-t", "stdio", "-c", "path/to/mcp-proxy.json", "-s", "calendar"],
+      "env": {
+        "TENANT_ID": "your-tenant-id",
+        "PUBLIC_CLIENT_ID": "your-public-client-id",
+        "AZURE_AUDIENCE": "your-audience-app-id"
+      },
+      "enabled": true
+    },
+    "m365-mail": {
+      "type": "local",
+      "command": ["mcpproxy", "-t", "stdio", "-c", "path/to/mcp-proxy.json", "-s", "mail"],
+      "env": {
+        "TENANT_ID": "your-tenant-id",
+        "PUBLIC_CLIENT_ID": "your-public-client-id",
+        "AZURE_AUDIENCE": "your-audience-app-id"
+      },
+      "enabled": true
+    },
+    "m365-copilot": {
+      "type": "local",
+      "command": ["mcpproxy", "-t", "stdio", "-c", "path/to/mcp-proxy.json", "-s", "copilot"],
+      "env": {
+        "TENANT_ID": "your-tenant-id",
+        "PUBLIC_CLIENT_ID": "your-public-client-id",
+        "AZURE_AUDIENCE": "your-audience-app-id"
+      },
+      "enabled": true
+    },
+    "m365-me": {
+      "type": "local",
+      "command": ["mcpproxy", "-t", "stdio", "-c", "path/to/mcp-proxy.json", "-s", "me"],
+      "env": {
+        "TENANT_ID": "your-tenant-id",
+        "PUBLIC_CLIENT_ID": "your-public-client-id",
+        "AZURE_AUDIENCE": "your-audience-app-id"
+      },
+      "enabled": true
+    }
+  }
+}
+```
+
+### HTTP per-server routing (requires separate proxy startup)
+
+Connect to individual endpoints as remote MCP servers. The proxy must be started
+separately (see [HTTP Mode](#http-mode-per-server-routing) above).
+
+**OpenCode** (`opencode.json`):
 
 ```json
 {
@@ -133,7 +249,7 @@ Connect to individual endpoints as remote MCP servers:
 }
 ```
 
-### VS Code (`.vscode/mcp.json`)
+**VS Code** (`.vscode/mcp.json`):
 
 ```json
 {

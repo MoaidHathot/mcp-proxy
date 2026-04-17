@@ -32,11 +32,18 @@ var verboseOption = new Option<bool>("--verbose", "-v")
     DefaultValueFactory = _ => false
 };
 
+var serverOption = new Option<string[]>("--server", "-s")
+{
+    Description = "Select specific server(s) from the configuration (others are disabled). Can be specified multiple times.",
+    AllowMultipleArgumentsPerToken = true
+};
+
 var rootCommand = new RootCommand("MCP Proxy - Aggregates multiple MCP servers into a single endpoint");
 rootCommand.Options.Add(transportOption);
 rootCommand.Options.Add(configOption);
 rootCommand.Options.Add(portOption);
 rootCommand.Options.Add(verboseOption);
+rootCommand.Options.Add(serverOption);
 
 rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
@@ -44,12 +51,13 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var configPath = parseResult.GetValue(configOption);
     var port = parseResult.GetValue(portOption);
     var verbose = parseResult.GetValue(verboseOption);
-    await RunProxyAsync(transport, configPath, port, verbose, cancellationToken).ConfigureAwait(false);
+    var selectedServers = parseResult.GetValue(serverOption);
+    await RunProxyAsync(transport, configPath, port, verbose, selectedServers, cancellationToken).ConfigureAwait(false);
 });
 
 return await rootCommand.Parse(args).InvokeAsync().ConfigureAwait(false);
 
-async Task RunProxyAsync(TransportType transport, string? configPath, int port, bool verbose, CancellationToken cancellationToken)
+async Task RunProxyAsync(TransportType transport, string? configPath, int port, bool verbose, string[]? selectedServers, CancellationToken cancellationToken)
 {
     // Resolve config path
     configPath ??= Environment.GetEnvironmentVariable("MCP_PROXY_CONFIG_PATH");
@@ -71,6 +79,31 @@ async Task RunProxyAsync(TransportType transport, string? configPath, int port, 
 
     // Load configuration
     var configuration = await ConfigurationLoader.LoadAsync(configPath, cancellationToken).ConfigureAwait(false);
+
+    // Filter servers if --server was specified
+    if (selectedServers is { Length: > 0 })
+    {
+        var selectedSet = new HashSet<string>(selectedServers, StringComparer.OrdinalIgnoreCase);
+
+        // Validate that all selected servers exist in the configuration
+        var unknownServers = selectedSet.Except(configuration.Mcp.Keys, StringComparer.OrdinalIgnoreCase).ToList();
+        if (unknownServers.Count > 0)
+        {
+            Console.Error.WriteLine($"Error: Unknown server(s): {string.Join(", ", unknownServers)}");
+            Console.Error.WriteLine($"Available servers: {string.Join(", ", configuration.Mcp.Keys)}");
+            Environment.Exit(1);
+            return;
+        }
+
+        // Disable all servers not in the selected set
+        foreach (var (name, config) in configuration.Mcp)
+        {
+            if (!selectedSet.Contains(name))
+            {
+                config.Enabled = false;
+            }
+        }
+    }
 
     if (transport == TransportType.Stdio)
     {

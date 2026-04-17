@@ -1,5 +1,4 @@
 {
-  "$schema": "../../mcp-proxy.schema.json",
   "proxy": {
     "serverInfo": {
       "name": "Public Client Auth Example",
