@@ -1,6 +1,6 @@
 # MCP Proxy
 
-A proxy server for the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) that aggregates multiple MCP servers into a single endpoint. This allows clients to connect to one proxy and access tools, resources, and prompts from multiple backend MCP servers.
+An extensible proxy and gateway for the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). Aggregates multiple MCP servers into a single endpoint, bridges transports (expose local stdio servers as remote HTTP endpoints and vice versa), handles authentication to remote backends (including Azure AD interactive browser and forward-authorization flows), and provides per-server routing, tool filtering, hooks, and a programmatic SDK.
 
 **[View Full Documentation](https://moaidhathot.github.io/mcp-proxy/)**
 
@@ -8,13 +8,20 @@ A proxy server for the [Model Context Protocol (MCP)](https://modelcontextprotoc
 
 - **Aggregates multiple MCP servers** - Connect to multiple backend MCP servers and expose all their tools, resources, and prompts through a single endpoint
 - **Dual transport support** - Run the proxy with either STDIO or HTTP/SSE transport
+- **Transport bridging** - Expose local STDIO servers as remote HTTP endpoints, or consume remote HTTP servers through a local STDIO interface
 - **Supports STDIO and HTTP backends** - Connect to backend MCP servers using STDIO (local processes) or HTTP/SSE (remote servers)
+- **Backend authentication** - Authenticate to remote backends using Azure AD client credentials, on-behalf-of, managed identity, forward-authorization, default Azure credential, or interactive browser (public client) flows
+- **Interactive browser auth** - Authenticate as the current user via browser sign-in using a pre-authorized public client ID (e.g., for Microsoft 365 MCP servers). Tokens are cached in the OS credential store for silent re-authentication
+- **Credential sharing** - Share a single credential instance across multiple backends via `credentialGroup`, avoiding duplicate browser prompts
+- **Deferred connection** - Defer backend connections until the first client request via `deferConnection`, avoiding interactive auth at startup
+- **Server selection** - Select specific servers from a config file via `--server` / `-s` to run a subset of backends
 - **Tool filtering** - AllowList, DenyList, or regex-based filtering per server
 - **Tool prefixing** - Add server-specific prefixes to avoid name collisions
 - **Hook system** - Pre-invoke and post-invoke hooks for logging, input/output transformation
 - **Advanced MCP support** - Sampling, elicitation, and roots forwarding to clients
 - **Per-server routing** - Expose each server on its own HTTP endpoint or aggregate all under one
-- **Authentication** - API key, Bearer token, and Azure AD (Microsoft Entra ID) authentication for HTTP endpoints
+- **Proxy authentication** - API key, Bearer token, and Azure AD (Microsoft Entra ID) authentication for inbound HTTP requests
+- **Config path expansion** - Environment variable expansion (`${VAR}`, `%VAR%`, `~`) in the `--config` path
 
 ## Installation
 
@@ -90,8 +97,9 @@ mcpproxy [options]
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
 | `--transport` | `-t` | Server transport type: `stdio`, `http`, or `sse` | `stdio` |
-| `--config` | `-c` | Path to mcp-proxy.json configuration file | Auto-detect |
+| `--config` | `-c` | Path to mcp-proxy.json configuration file (supports `${VAR}`, `%VAR%`, `~` expansion) | Auto-detect |
 | `--port` | `-p` | Port for HTTP/SSE server | `5000` |
+| `--server` | `-s` | Select specific server(s) from the configuration. Can be specified multiple times | All servers |
 | `--verbose` | `-v` | Enable verbose logging | `false` |
 
 ### Environment Variables
@@ -114,6 +122,13 @@ mcpproxy -t stdio -c ./mcp-proxy.json
 
 # Run with SSE, custom port, and verbose logging
 mcpproxy -t sse -c /path/to/config.json -p 8080 -v
+
+# Run only specific servers from the config
+mcpproxy -t stdio -c ./mcp-proxy.json -s calendar -s mail
+
+# Use environment variable expansion in config path
+mcpproxy -t stdio -c '${XDG_CONFIG_HOME}/my-proxy/config.json'
+mcpproxy -t stdio -c '~/my-proxy/config.json'
 ```
 
 ## Configuration Reference
@@ -389,6 +404,57 @@ Expose each server on its own HTTP endpoint instead of aggregating all under one
 With this config:
 - GitHub server tools available at `/mcp/github/tools/list`, `/mcp/github/tools/call`, etc.
 - Filesystem server tools available at `/mcp/fs/tools/list`, `/mcp/fs/tools/call`, etc.
+
+### Backend Authentication
+
+Configure how the proxy authenticates to remote backend MCP servers. This is separate from proxy-level (inbound) authentication.
+
+```json
+{
+  "mcp": {
+    "my-backend": {
+      "type": "http",
+      "url": "https://api.example.com/mcp",
+      "auth": {
+        "type": "InteractiveBrowser",
+        "credentialGroup": "shared",
+        "deferConnection": true,
+        "azureAd": {
+          "clientId": "${PUBLIC_CLIENT_ID}",
+          "tenantId": "${TENANT_ID}",
+          "scopes": ["${AUDIENCE}/.default"]
+        }
+      }
+    }
+  }
+}
+```
+
+#### Auth Types
+
+| Type | Description |
+|------|-------------|
+| `None` | No authentication (default) |
+| `AzureAdClientCredentials` | App-to-app authentication using client ID and secret |
+| `AzureAdOnBehalfOf` | User-delegated access via on-behalf-of flow |
+| `AzureAdManagedIdentity` | Authentication using Azure managed identity |
+| `ForwardAuthorization` | Forward the incoming Authorization header to the backend (HTTP mode only) |
+| `AzureDefaultCredential` | Auto-discover credentials from the environment (Azure CLI, env vars, managed identity, etc.) |
+| `InteractiveBrowser` | Authenticate as the current user via browser sign-in using a pre-authorized public client ID. Tokens are cached in the OS credential store for silent re-authentication |
+
+#### Auth Configuration Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `type` | string | `"None"` | Auth type (see table above) |
+| `credentialGroup` | string | `null` | Backends with the same group share a single credential instance, avoiding duplicate browser prompts. Applies to `InteractiveBrowser` |
+| `deferConnection` | bool | `false` | When `true`, defer backend connection until the first client request. Avoids interactive auth at startup |
+| `azureAd.clientId` | string | `null` | Client/application ID |
+| `azureAd.tenantId` | string | `null` | Azure AD tenant ID |
+| `azureAd.clientSecret` | string | `null` | Client secret (supports `env:VAR_NAME`) |
+| `azureAd.scopes` | string[] | `[".default"]` | OAuth scopes to request |
+| `azureAd.tokenCacheName` | string | `"mcp-proxy"` | Persistent token cache name in OS credential store |
+| `azureAd.redirectUri` | string | `null` | Redirect URI for interactive browser flow |
 
 ## Advanced MCP Protocol Support
 
@@ -696,6 +762,7 @@ await app.RunAsync();
 | `WithHeaders(dict)` | Set HTTP headers (HTTP/SSE) |
 | `WithToolPrefix(prefix, separator)` | Add prefix to tool names |
 | `WithResourcePrefix(prefix, separator)` | Add prefix to resource URIs |
+| `WithBackendAuth(type, configure)` | Configure backend authentication (Azure AD, interactive browser, etc.) |
 | `AllowTools(patterns...)` | Only include matching tools |
 | `DenyTools(patterns...)` | Exclude matching tools |
 | `WithPreInvokeHook(hook)` | Add server-specific pre-invoke hook |
@@ -819,6 +886,8 @@ See the `/samples` directory for complete examples:
 - **[11-sdk-basic](samples/11-sdk-basic)** - Basic SDK usage and DI integration
 - **[12-sdk-hooks-interceptors](samples/12-sdk-hooks-interceptors)** - Hooks, interceptors, logging
 - **[13-sdk-virtual-tools](samples/13-sdk-virtual-tools)** - Virtual tools and tool modification
+- **[15-teams-integration](samples/15-teams-integration)** - Teams MCP integration with caching, forward-auth, user-auth, and `--log-token` discovery
+- **[16-public-client-auth](samples/16-public-client-auth)** - Multi-backend interactive browser auth with credential sharing (Microsoft 365 Calendar, Mail, Copilot, Me)
 
 ### Low-Level API
 
