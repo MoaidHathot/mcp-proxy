@@ -5,6 +5,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Clean artifacts directory to ensure only newly packed packages are present
+if (Test-Path ./artifacts) {
+    Remove-Item ./artifacts/*.nupkg -Force -ErrorAction SilentlyContinue
+    Write-Host "Cleaned artifacts directory." -ForegroundColor Yellow
+}
+
 $projects = @(
     "src/McpProxy.Sdk/McpProxy.Sdk.csproj",
     "src/McpProxy/McpProxy.csproj"
