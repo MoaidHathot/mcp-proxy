@@ -4,6 +4,7 @@ using McpProxy.Sdk.Filtering;
 using McpProxy.Sdk.Hooks;
 using McpProxy.Sdk.Hooks.BuiltIn;
 using McpProxy.Sdk.Logging;
+using McpProxy.Sdk.Sdk;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
@@ -24,6 +25,7 @@ public sealed class SingleServerProxy
     private readonly IToolTransformer _transformer;
     private readonly ToolPrefixer? _prefixer;
     private readonly IHttpContextAccessor? _httpContextAccessor;
+    private readonly IReadOnlyList<VirtualToolDefinition> _virtualTools;
     private HookPipeline? _hookPipeline;
 
     /// <summary>
@@ -44,13 +46,15 @@ public sealed class SingleServerProxy
         McpClientManager clientManager,
         string serverName,
         ServerConfiguration serverConfig,
-        IHttpContextAccessor? httpContextAccessor = null)
+        IHttpContextAccessor? httpContextAccessor = null,
+        IReadOnlyList<VirtualToolDefinition>? virtualTools = null)
     {
         _logger = logger;
         _clientManager = clientManager;
         _serverName = serverName;
         _serverConfig = serverConfig;
         _httpContextAccessor = httpContextAccessor;
+        _virtualTools = virtualTools ?? [];
 
         _filter = FilterFactory.Create(serverConfig.Tools.Filter);
         _transformer = TransformerFactory.Create(serverConfig.Tools);
@@ -73,32 +77,36 @@ public sealed class SingleServerProxy
     public async ValueTask<ListToolsResult> ListToolsAsync(
         CancellationToken cancellationToken = default)
     {
-        var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
-        if (clientInfo is null)
-        {
-            return new ListToolsResult { Tools = [] };
-        }
-
-        ProxyLogger.ListingToolsFromServer(_logger, _serverName);
-
         var allTools = new List<Tool>();
 
-        try
+        // Add per-server virtual tools first
+        foreach (var virtualTool in _virtualTools)
         {
-            var tools = await clientInfo.Client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+            allTools.Add(virtualTool.Tool);
+        }
 
-            foreach (var tool in tools)
+        var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
+        if (clientInfo is not null)
+        {
+            ProxyLogger.ListingToolsFromServer(_logger, _serverName);
+
+            try
             {
-                if (_filter.ShouldInclude(tool, _serverName))
+                var tools = await clientInfo.Client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+
+                foreach (var tool in tools)
                 {
-                    var transformed = _transformer.Transform(tool, _serverName);
-                    allTools.Add(transformed);
+                    if (_filter.ShouldInclude(tool, _serverName))
+                    {
+                        var transformed = _transformer.Transform(tool, _serverName);
+                        allTools.Add(transformed);
+                    }
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to list tools from server '{ServerName}'", _serverName);
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to list tools from server '{ServerName}'", _serverName);
+            }
         }
 
         ProxyLogger.ToolsListed(_logger, allTools.Count);
@@ -113,6 +121,14 @@ public sealed class SingleServerProxy
         CallToolRequestParams request,
         CancellationToken cancellationToken = default)
     {
+        // Check per-server virtual tools first
+        var virtualTool = _virtualTools.FirstOrDefault(
+            vt => string.Equals(vt.Tool.Name, request.Name, StringComparison.OrdinalIgnoreCase));
+        if (virtualTool is not null)
+        {
+            return await virtualTool.Handler(request, cancellationToken).ConfigureAwait(false);
+        }
+
         var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
         if (clientInfo is null)
         {
@@ -371,6 +387,40 @@ public sealed class SingleServerProxy
                 }
             }).ToList()
         };
+    }
+
+    /// <summary>
+    /// Subscribes to a resource on this backend server.
+    /// </summary>
+    public async ValueTask SubscribeToResourceAsync(
+        string uri,
+        CancellationToken cancellationToken = default)
+    {
+        var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
+        if (clientInfo is null)
+        {
+            _logger.LogWarning("Cannot subscribe to resource '{Uri}' — server '{ServerName}' not available", uri, _serverName);
+            return;
+        }
+
+        await clientInfo.Client.SubscribeToResourceAsync(uri, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Unsubscribes from a resource on this backend server.
+    /// </summary>
+    public async ValueTask UnsubscribeFromResourceAsync(
+        string uri,
+        CancellationToken cancellationToken = default)
+    {
+        var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
+        if (clientInfo is null)
+        {
+            _logger.LogWarning("Cannot unsubscribe from resource '{Uri}' — server '{ServerName}' not available", uri, _serverName);
+            return;
+        }
+
+        await clientInfo.Client.UnsubscribeFromResourceAsync(uri, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask<McpClientInfo?> GetClientInfoAsync(CancellationToken cancellationToken = default)

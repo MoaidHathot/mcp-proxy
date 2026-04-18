@@ -1,7 +1,7 @@
 using System.Text;
+using McpProxy.Abstractions;
 using System.Text.Json;
 using Azure.Identity;
-using McpProxy.Sdk.Configuration;
 using McpProxy.Sdk.Proxy;
 using McpProxy.Sdk.Sdk;
 using McpProxy.Samples.TeamsIntegration;

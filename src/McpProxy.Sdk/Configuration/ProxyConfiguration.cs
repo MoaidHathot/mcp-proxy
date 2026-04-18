@@ -1,3 +1,4 @@
+using McpProxy.Abstractions;
 using System.Text.Json.Serialization;
 
 namespace McpProxy.Sdk.Configuration;
@@ -83,23 +84,6 @@ public sealed class ServerInfo
     /// Gets or sets the server instructions.
     /// </summary>
     public string? Instructions { get; set; }
-}
-
-/// <summary>
-/// Routing mode for the proxy.
-/// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter<RoutingMode>))]
-public enum RoutingMode
-{
-    /// <summary>
-    /// All servers are aggregated under a single endpoint.
-    /// </summary>
-    Unified,
-
-    /// <summary>
-    /// Each server is exposed on its own endpoint.
-    /// </summary>
-    PerServer
 }
 
 /// <summary>

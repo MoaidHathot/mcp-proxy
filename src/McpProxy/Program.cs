@@ -1,11 +1,13 @@
 using System.CommandLine;
 using System.Text.RegularExpressions;
+using McpProxy.Abstractions;
 using McpProxy.Sdk.Authentication;
 using McpProxy.Sdk.Configuration;
 using McpProxy.Sdk.Debugging;
 using McpProxy.Sdk.Hooks;
 using McpProxy.Sdk.Logging;
 using McpProxy.Sdk.Proxy;
+using McpProxy.Sdk.Sdk;
 using McpProxy.Sdk.Telemetry;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -185,15 +187,42 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
     // Register SingleServerProxy instances for PerServer mode
     if (configuration.Proxy.Routing.Mode == RoutingMode.PerServer)
     {
+        var perServerProxies = new Dictionary<string, SingleServerProxy>(StringComparer.OrdinalIgnoreCase);
+        var perServerRoutes = new Dictionary<string, SingleServerProxy>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var (serverName, serverConfig) in configuration.Mcp.Where(m => m.Value.Enabled))
         {
             builder.Services.AddKeyedSingleton(serverName, (sp, _) =>
             {
-                var logger = sp.GetRequiredService<ILogger<SingleServerProxy>>();
-                var clientManager = sp.GetRequiredService<McpClientManager>();
-                return new SingleServerProxy(logger, clientManager, serverName, serverConfig);
+                var singleLogger = sp.GetRequiredService<ILogger<SingleServerProxy>>();
+                var clientMgr = sp.GetRequiredService<McpClientManager>();
+                return new SingleServerProxy(singleLogger, clientMgr, serverName, serverConfig);
             });
         }
+
+        // Register IPerServerProxyRegistrar so route-aware MCP handlers can delegate to SingleServerProxy
+        builder.Services.AddSingleton<IPerServerProxyRegistrar>(sp =>
+        {
+            var singleLogger = sp.GetRequiredService<ILogger<SingleServerProxy>>();
+            var clientMgr = sp.GetRequiredService<McpClientManager>();
+            var httpCtxAccessor = sp.GetService<IHttpContextAccessor>();
+            var proxies = new Dictionary<string, SingleServerProxy>(StringComparer.OrdinalIgnoreCase);
+            var routeToProxy = new Dictionary<string, SingleServerProxy>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var (srvName, srvConfig) in configuration.Mcp.Where(m => m.Value.Enabled))
+            {
+                var proxy = new SingleServerProxy(singleLogger, clientMgr, srvName, srvConfig, httpCtxAccessor);
+                proxies[srvName] = proxy;
+                var route = srvConfig.Route ?? $"{configuration.Proxy.Routing.BasePath}/{srvName}";
+                routeToProxy[route] = proxy;
+            }
+
+            return new PerServerProxyRegistrar(proxies, routeToProxy);
+        });
+    }
+    else
+    {
+        builder.Services.AddSingleton<IPerServerProxyRegistrar>(new NoOpPerServerProxyRegistrar());
     }
 
     // Configure MCP Server with HTTP transport and all handlers
@@ -249,6 +278,11 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
         foreach (var (serverName, serverConfig) in configuration.Mcp.Where(m => m.Value.Enabled))
         {
             var route = serverConfig.Route ?? $"{configuration.Proxy.Routing.BasePath}/{serverName}";
+            
+            // Map MCP Streamable HTTP endpoint for this server (MCP protocol clients)
+            app.MapMcp(route);
+            
+            // Map REST sub-routes for backward compatibility
             MapSingleServerEndpoint(app, serverName, route);
             ProxyLogger.RegisteredServerEndpoint(logger, serverName, route);
         }
@@ -531,51 +565,83 @@ static class McpProxyBuilderExtensions
             .WithListToolsHandler((context, token) =>
             {
                 EnsureProxyClientHandlersInitialized(context);
+                if (TryGetPerServerProxy(context) is { } singleProxy)
+                    return singleProxy.ListToolsAsync(token);
                 var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
                 return proxy.ListToolsAsync(context, token);
             })
             .WithCallToolHandler((context, token) =>
             {
                 EnsureProxyClientHandlersInitialized(context);
+                if (TryGetPerServerProxy(context) is { } singleProxy)
+                    return singleProxy.CallToolAsync(context.Params!, token);
                 var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
                 return proxy.CallToolAsync(context, token);
             })
             .WithListResourcesHandler((context, token) =>
             {
                 EnsureProxyClientHandlersInitialized(context);
+                if (TryGetPerServerProxy(context) is { } singleProxy)
+                    return singleProxy.ListResourcesAsync(token);
                 var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
                 return proxy.ListResourcesAsync(context, token);
             })
             .WithReadResourceHandler((context, token) =>
             {
                 EnsureProxyClientHandlersInitialized(context);
+                if (TryGetPerServerProxy(context) is { } singleProxy)
+                    return singleProxy.ReadResourceAsync(context.Params!, token);
                 var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
                 return proxy.ReadResourceAsync(context, token);
             })
             .WithListPromptsHandler((context, token) =>
             {
                 EnsureProxyClientHandlersInitialized(context);
+                if (TryGetPerServerProxy(context) is { } singleProxy)
+                    return singleProxy.ListPromptsAsync(token);
                 var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
                 return proxy.ListPromptsAsync(context, token);
             })
             .WithGetPromptHandler((context, token) =>
             {
                 EnsureProxyClientHandlersInitialized(context);
+                if (TryGetPerServerProxy(context) is { } singleProxy)
+                    return singleProxy.GetPromptAsync(context.Params!, token);
                 var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
                 return proxy.GetPromptAsync(context, token);
             })
-            .WithSubscribeToResourcesHandler((context, token) =>
+            .WithSubscribeToResourcesHandler(async (context, token) =>
             {
                 EnsureProxyClientHandlersInitialized(context);
+                if (TryGetPerServerProxy(context) is { } singleProxy)
+                {
+                    await singleProxy.SubscribeToResourceAsync(context.Params!.Uri, token).ConfigureAwait(false);
+                    return new EmptyResult();
+                }
                 var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-                return proxy.SubscribeToResourceAsync(context, token);
+                return await proxy.SubscribeToResourceAsync(context, token).ConfigureAwait(false);
             })
-            .WithUnsubscribeFromResourcesHandler((context, token) =>
+            .WithUnsubscribeFromResourcesHandler(async (context, token) =>
             {
                 EnsureProxyClientHandlersInitialized(context);
+                if (TryGetPerServerProxy(context) is { } singleProxy)
+                {
+                    await singleProxy.UnsubscribeFromResourceAsync(context.Params!.Uri, token).ConfigureAwait(false);
+                    return new EmptyResult();
+                }
                 var proxy = context.Server!.Services!.GetRequiredService<McpProxyServer>();
-                return proxy.UnsubscribeFromResourceAsync(context, token);
+                return await proxy.UnsubscribeFromResourceAsync(context, token).ConfigureAwait(false);
             });
+    }
+
+    private static SingleServerProxy? TryGetPerServerProxy<TParams>(RequestContext<TParams> context) where TParams : class
+    {
+        var httpContextAccessor = context.Server!.Services!.GetService<IHttpContextAccessor>();
+        var httpContext = httpContextAccessor?.HttpContext;
+        if (httpContext is null) return null;
+
+        var registrar = context.Server.Services!.GetService<IPerServerProxyRegistrar>();
+        return registrar?.TryGetProxyForRoute(httpContext.Request.Path);
     }
 
     /// <summary>

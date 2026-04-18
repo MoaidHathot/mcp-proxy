@@ -18,6 +18,7 @@ public sealed class McpProxyBuilder : IMcpProxyBuilder
     private readonly List<IToolCallInterceptor> _toolCallInterceptors = [];
     private readonly Dictionary<string, ServerBuilderState> _serverBuilders = [];
     private string? _configFilePath;
+    private bool _showGlobalVirtualToolsOnPerServerRoutes;
 
     /// <summary>
     /// Initializes a new instance of <see cref="McpProxyBuilder"/>.
@@ -38,6 +39,7 @@ public sealed class McpProxyBuilder : IMcpProxyBuilder
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
+        ThrowIfDuplicateServer(name);
 
         var serverConfig = new ServerConfiguration
         {
@@ -58,6 +60,7 @@ public sealed class McpProxyBuilder : IMcpProxyBuilder
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        ThrowIfDuplicateServer(name);
 
         var serverConfig = new ServerConfiguration
         {
@@ -77,6 +80,7 @@ public sealed class McpProxyBuilder : IMcpProxyBuilder
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        ThrowIfDuplicateServer(name);
 
         var serverConfig = new ServerConfiguration
         {
@@ -130,6 +134,13 @@ public sealed class McpProxyBuilder : IMcpProxyBuilder
             Handler = handler
         });
 
+        return this;
+    }
+
+    /// <inheritdoc />
+    public IMcpProxyBuilder WithGlobalVirtualToolsOnPerServerRoutes(bool enabled = true)
+    {
+        _showGlobalVirtualToolsOnPerServerRoutes = enabled;
         return this;
     }
 
@@ -208,6 +219,7 @@ public sealed class McpProxyBuilder : IMcpProxyBuilder
             GlobalPreInvokeHooks = [.. _globalPreInvokeHooks],
             GlobalPostInvokeHooks = [.. _globalPostInvokeHooks],
             VirtualTools = [.. _virtualTools],
+            ShowGlobalVirtualToolsOnPerServerRoutes = _showGlobalVirtualToolsOnPerServerRoutes,
             ToolInterceptors = [.. _toolInterceptors],
             ToolCallInterceptors = [.. _toolCallInterceptors],
             ServerStates = _serverBuilders.ToDictionary(
@@ -220,6 +232,15 @@ public sealed class McpProxyBuilder : IMcpProxyBuilder
     /// Gets the proxy configuration.
     /// </summary>
     internal ProxyConfiguration Configuration => _configuration;
+
+    private void ThrowIfDuplicateServer(string name)
+    {
+        if (_configuration.Mcp.ContainsKey(name))
+        {
+            throw new ArgumentException(
+                $"A server with name '{name}' has already been added. Server names must be unique.", nameof(name));
+        }
+    }
 }
 
 /// <summary>
@@ -231,6 +252,7 @@ internal sealed class ServerBuilderState
     public ServerConfiguration Configuration { get; }
     public List<IPreInvokeHook> PreInvokeHooks { get; } = [];
     public List<IPostInvokeHook> PostInvokeHooks { get; } = [];
+    public List<VirtualToolDefinition> VirtualTools { get; } = [];
     public IToolFilter? CustomFilter { get; set; }
     public IToolTransformer? CustomTransformer { get; set; }
 
@@ -246,6 +268,7 @@ internal sealed class ServerBuilderState
         Configuration = Configuration,
         PreInvokeHooks = [.. PreInvokeHooks],
         PostInvokeHooks = [.. PostInvokeHooks],
+        VirtualTools = [.. VirtualTools],
         CustomFilter = CustomFilter,
         CustomTransformer = CustomTransformer
     };
@@ -412,6 +435,23 @@ internal sealed class ServerBuilder : IServerBuilder
     }
 
     /// <inheritdoc />
+    public IServerBuilder AddVirtualTool(
+        Tool tool,
+        Func<CallToolRequestParams, CancellationToken, ValueTask<CallToolResult>> handler)
+    {
+        ArgumentNullException.ThrowIfNull(tool);
+        ArgumentNullException.ThrowIfNull(handler);
+
+        _state.VirtualTools.Add(new VirtualToolDefinition
+        {
+            Tool = tool,
+            Handler = handler
+        });
+
+        return this;
+    }
+
+    /// <inheritdoc />
     public IMcpProxyBuilder Build()
     {
         return _parent;
@@ -447,6 +487,11 @@ public sealed class McpProxySdkConfiguration
     /// Gets the virtual tools.
     /// </summary>
     public required IReadOnlyList<VirtualToolDefinition> VirtualTools { get; init; }
+
+    /// <summary>
+    /// Gets whether global virtual tools should be shown on per-server routes.
+    /// </summary>
+    public bool ShowGlobalVirtualToolsOnPerServerRoutes { get; init; }
 
     /// <summary>
     /// Gets the tool interceptors.
@@ -488,6 +533,11 @@ public sealed class ServerState
     /// Gets the post-invoke hooks for this server.
     /// </summary>
     public required IReadOnlyList<IPostInvokeHook> PostInvokeHooks { get; init; }
+
+    /// <summary>
+    /// Gets the virtual tools for this server.
+    /// </summary>
+    public IReadOnlyList<VirtualToolDefinition> VirtualTools { get; init; } = [];
 
     /// <summary>
     /// Gets the custom tool filter if configured.

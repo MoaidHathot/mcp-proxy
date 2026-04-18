@@ -1,3 +1,4 @@
+using McpProxy.Abstractions;
 using System.Text.Json.Serialization;
 
 namespace McpProxy.Sdk.Configuration;
@@ -104,57 +105,6 @@ public sealed class ServerConfiguration
     /// Used for HTTP/SSE backends that require Azure AD or other OAuth authentication.
     /// </summary>
     public BackendAuthConfiguration? Auth { get; set; }
-}
-
-/// <summary>
-/// Authentication type for backend server connections.
-/// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter<BackendAuthType>))]
-public enum BackendAuthType
-{
-    /// <summary>
-    /// No authentication required.
-    /// </summary>
-    None,
-
-    /// <summary>
-    /// Azure AD authentication using client credentials (app-to-app).
-    /// </summary>
-    AzureAdClientCredentials,
-
-    /// <summary>
-    /// Azure AD authentication using on-behalf-of flow (user delegation).
-    /// </summary>
-    AzureAdOnBehalfOf,
-
-    /// <summary>
-    /// Azure AD authentication using managed identity.
-    /// </summary>
-    AzureAdManagedIdentity,
-
-    /// <summary>
-    /// Forward the incoming Authorization header from the client request to the backend.
-    /// This allows the proxy to pass through authentication without needing its own credentials.
-    /// Requires the proxy to be running in HTTP/SSE mode (not stdio).
-    /// </summary>
-    ForwardAuthorization,
-
-    /// <summary>
-    /// Azure identity using <c>DefaultAzureCredential</c> from <c>Azure.Identity</c>.
-    /// Automatically discovers credentials from the local environment:
-    /// Azure CLI (<c>az login</c>), environment variables, managed identity, Visual Studio, etc.
-    /// Useful for local development scenarios where the developer is already authenticated.
-    /// </summary>
-    AzureDefaultCredential,
-
-    /// <summary>
-    /// Interactive browser authentication using a public client ID.
-    /// Opens a browser for user sign-in on first use; subsequent requests use cached refresh tokens.
-    /// Useful for authenticating as the current user against backends that require a pre-authorized
-    /// public client ID (e.g., Microsoft 365 MCP servers via VS Code's app registration).
-    /// Tokens are persisted to the OS credential store for silent re-authentication across restarts.
-    /// </summary>
-    InteractiveBrowser
 }
 
 /// <summary>

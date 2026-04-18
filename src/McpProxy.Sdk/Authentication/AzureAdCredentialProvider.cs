@@ -1,8 +1,10 @@
+using McpProxy.Abstractions;
 using McpProxy.Sdk.Configuration;
 using McpProxy.Sdk.Logging;
 using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Client.AppConfig;
+using MsalAuthenticationResult = Microsoft.Identity.Client.AuthenticationResult;
 using System.Security.Cryptography.X509Certificates;
 
 namespace McpProxy.Sdk.Authentication;
@@ -85,7 +87,7 @@ public sealed class AzureAdCredentialProvider : IDisposable
         }
     }
 
-    private async Task<AuthenticationResult> AcquireTokenWithClientCredentialsAsync(CancellationToken cancellationToken)
+    private async Task<MsalAuthenticationResult> AcquireTokenWithClientCredentialsAsync(CancellationToken cancellationToken)
     {
         if (_confidentialClient is null)
         {
@@ -98,7 +100,7 @@ public sealed class AzureAdCredentialProvider : IDisposable
             .ConfigureAwait(false);
     }
 
-    private async Task<AuthenticationResult> AcquireTokenOnBehalfOfAsync(string userAssertion, CancellationToken cancellationToken)
+    private async Task<MsalAuthenticationResult> AcquireTokenOnBehalfOfAsync(string userAssertion, CancellationToken cancellationToken)
     {
         if (_confidentialClient is null)
         {
@@ -118,7 +120,7 @@ public sealed class AzureAdCredentialProvider : IDisposable
             .ConfigureAwait(false);
     }
 
-    private async Task<AuthenticationResult> AcquireTokenWithManagedIdentityAsync(CancellationToken cancellationToken)
+    private async Task<MsalAuthenticationResult> AcquireTokenWithManagedIdentityAsync(CancellationToken cancellationToken)
     {
         if (_managedIdentityClient is null)
         {

@@ -1,6 +1,7 @@
 using McpProxy.Abstractions;
 using McpProxy.Sdk.Configuration;
 using McpProxy.Sdk.Sdk;
+using ModelContextProtocol.Protocol;
 
 namespace McpProxy.Tests.Unit.Sdk;
 
@@ -67,17 +68,19 @@ public class McpProxyBuilderTests
         }
     }
 
-    public class WithRoutingExtensionTests
+    public class WithRoutingInterfaceTests
     {
         [Fact]
-        public void Extension_Method_Sets_Routing_Mode()
+        public void Interface_Method_Sets_Routing_Mode()
         {
             // Arrange
             var builder = McpProxyBuilder.Create();
-            var interfaceBuilder = (IMcpProxyBuilder)builder;
+#pragma warning disable CA1859 // Intentionally testing through interface
+            IMcpProxyBuilder interfaceRef = builder;
+#pragma warning restore CA1859
 
             // Act
-            interfaceBuilder.WithRouting(RoutingMode.PerServer, "/mcp");
+            interfaceRef.WithRouting(RoutingMode.PerServer, "/mcp");
             var config = builder.BuildConfiguration();
 
             // Assert
@@ -186,6 +189,168 @@ public class McpProxyBuilderTests
             config.Configuration.Mcp["calendar"].Title.Should().Be("Calendar");
             config.Configuration.Mcp["calendar"].Route.Should().Be("/calendar");
             config.Configuration.Mcp["local"].Title.Should().Be("Local");
+        }
+    }
+
+    public class DuplicateServerNameTests
+    {
+        [Fact]
+        public void AddStdioServer_Throws_On_Duplicate_Name()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+            builder.AddStdioServer("test", "echo").Build();
+
+            // Act
+            var act = () => builder.AddStdioServer("test", "echo2").Build();
+
+            // Assert
+            act.Should().Throw<ArgumentException>().WithMessage("*test*");
+        }
+
+        [Fact]
+        public void AddHttpServer_Throws_On_Duplicate_Name()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+            builder.AddHttpServer("test", "http://a.com/mcp").Build();
+
+            // Act
+            var act = () => builder.AddHttpServer("test", "http://b.com/mcp").Build();
+
+            // Assert
+            act.Should().Throw<ArgumentException>().WithMessage("*test*");
+        }
+
+        [Fact]
+        public void AddSseServer_Throws_On_Duplicate_Name()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+            builder.AddSseServer("test", "http://a.com/sse").Build();
+
+            // Act
+            var act = () => builder.AddSseServer("test", "http://b.com/sse").Build();
+
+            // Assert
+            act.Should().Throw<ArgumentException>().WithMessage("*test*");
+        }
+
+        [Fact]
+        public void Different_Names_Do_Not_Throw()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+
+            // Act & Assert — should not throw
+            builder.AddStdioServer("server-a", "echo").Build();
+            builder.AddHttpServer("server-b", "http://b.com/mcp").Build();
+            builder.AddSseServer("server-c", "http://c.com/sse").Build();
+
+            var config = builder.BuildConfiguration();
+            config.Configuration.Mcp.Should().HaveCount(3);
+        }
+    }
+
+    public class WithBackendAuthTests
+    {
+        [Fact]
+        public void Sets_Auth_Type_Via_Interface()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+
+            // Act
+            builder.AddHttpServer("test", "http://example.com/mcp")
+                .WithBackendAuth(BackendAuthType.ForwardAuthorization)
+                .Build();
+
+            var config = builder.BuildConfiguration();
+
+            // Assert
+            config.Configuration.Mcp["test"].Auth.Should().NotBeNull();
+            config.Configuration.Mcp["test"].Auth!.Type.Should().Be(BackendAuthType.ForwardAuthorization);
+        }
+    }
+
+    public class VirtualToolTests
+    {
+        [Fact]
+        public void AddVirtualTool_On_Server_Stores_In_ServerState()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+            var tool = new Tool
+            {
+                Name = "my_virtual_tool",
+                Description = "A virtual tool",
+                InputSchema = System.Text.Json.JsonDocument.Parse("""{"type":"object"}""").RootElement
+            };
+
+            // Act
+            builder.AddHttpServer("test", "http://example.com/mcp")
+                .AddVirtualTool(tool, (_, _) => ValueTask.FromResult(new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = "virtual result" }]
+                }))
+                .Build();
+
+            var config = builder.BuildConfiguration();
+
+            // Assert
+            config.ServerStates["test"].VirtualTools.Should().HaveCount(1);
+            config.ServerStates["test"].VirtualTools[0].Tool.Name.Should().Be("my_virtual_tool");
+        }
+
+        [Fact]
+        public void Global_AddVirtualTool_Stores_In_VirtualTools()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+            var tool = new Tool
+            {
+                Name = "global_tool",
+                Description = "A global virtual tool",
+                InputSchema = System.Text.Json.JsonDocument.Parse("""{"type":"object"}""").RootElement
+            };
+
+            // Act
+            builder.AddVirtualTool(tool, (_, _) => ValueTask.FromResult(new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = "global result" }]
+            }));
+
+            var config = builder.BuildConfiguration();
+
+            // Assert
+            config.VirtualTools.Should().HaveCount(1);
+            config.VirtualTools[0].Tool.Name.Should().Be("global_tool");
+        }
+    }
+
+    public class GlobalVirtualToolsFlagTests
+    {
+        [Fact]
+        public void Default_Is_False()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+            var config = builder.BuildConfiguration();
+
+            // Assert
+            config.ShowGlobalVirtualToolsOnPerServerRoutes.Should().BeFalse();
+        }
+
+        [Fact]
+        public void Sets_To_True()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+            builder.WithGlobalVirtualToolsOnPerServerRoutes();
+            var config = builder.BuildConfiguration();
+
+            // Assert
+            config.ShowGlobalVirtualToolsOnPerServerRoutes.Should().BeTrue();
         }
     }
 }

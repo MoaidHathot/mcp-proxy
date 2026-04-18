@@ -1,3 +1,4 @@
+using McpProxy.Abstractions;
 using McpProxy.Sdk.Authentication;
 using McpProxy.Sdk.Configuration;
 using McpProxy.Sdk.Debugging;

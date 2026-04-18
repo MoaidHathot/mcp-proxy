@@ -162,7 +162,7 @@ The configuration file is JSON with support for comments and trailing commas. En
 | `proxy.routing.mode` | string | `"unified"` | `"unified"` or `"perServer"` |
 | `proxy.routing.basePath` | string | `"/mcp"` | Base path for MCP endpoints |
 | `proxy.caching.tools.enabled` | bool | `true` | Enable tool list caching |
-| `proxy.caching.tools.ttlSeconds` | int | `60` | Cache time-to-live in seconds |
+| `proxy.caching.tools.ttlSeconds` | int | `300` | Cache time-to-live in seconds |
 
 ### Authentication Settings
 
@@ -782,16 +782,19 @@ The unified `/mcp` endpoint still aggregates everything.
 | Method | Description |
 |--------|-------------|
 | `WithServerInfo(name, version, instructions)` | Set proxy server metadata |
-| `WithToolCaching(enabled, ttlSeconds)` | Configure tool list caching |
+| `WithRouting(mode, basePath)` | Configure routing mode (Unified or PerServer) |
+| `WithToolCaching(enabled, ttlSeconds)` | Configure tool list caching (default: 300s) |
 | `AddStdioServer(name, command, args...)` | Add a local STDIO backend |
 | `AddHttpServer(name, url)` | Add a remote HTTP backend |
 | `AddSseServer(name, url)` | Add a remote SSE backend |
 | `WithGlobalPreInvokeHook(hook)` | Add a pre-invoke hook for all servers |
 | `WithGlobalPostInvokeHook(hook)` | Add a post-invoke hook for all servers |
-| `AddVirtualTool(tool, handler)` | Add a proxy-handled virtual tool |
+| `WithGlobalHook(hook)` | Add a combined pre/post-invoke hook for all servers |
+| `AddVirtualTool(tool, handler)` | Add a proxy-handled virtual tool (unified endpoint) |
+| `WithGlobalVirtualToolsOnPerServerRoutes(enabled)` | Show global virtual tools on per-server routes |
 | `WithToolInterceptor(interceptor)` | Intercept and modify tool lists |
 | `WithToolCallInterceptor(interceptor)` | Intercept tool calls |
-| `WithConfigurationFile(path)` | Merge with JSON configuration |
+| `WithConfigurationFile(path)` | Merge with JSON configuration (SDK config takes priority) |
 
 #### WebApplication Extension Methods
 
@@ -810,13 +813,20 @@ The unified `/mcp` endpoint still aggregates everything.
 | `WithDescription(description)` | Set description |
 | `WithEnvironment(dict)` | Set environment variables (STDIO) |
 | `WithHeaders(dict)` | Set HTTP headers (HTTP/SSE) |
+| `WithRoute(route)` | Set custom route path (PerServer mode) |
 | `WithToolPrefix(prefix, separator)` | Add prefix to tool names |
 | `WithResourcePrefix(prefix, separator)` | Add prefix to resource URIs |
-| `WithBackendAuth(type, configure)` | Configure backend authentication (Azure AD, interactive browser, etc.) |
+| `WithPromptPrefix(prefix, separator)` | Add prefix to prompt names |
+| `WithBackendAuth(type)` | Configure backend authentication type |
+| `WithBackendAuth(type, configure)` | Configure Azure AD backend authentication |
 | `AllowTools(patterns...)` | Only include matching tools |
 | `DenyTools(patterns...)` | Exclude matching tools |
+| `WithToolFilter(filter)` | Add a custom tool filter |
+| `WithToolTransformer(transformer)` | Add a custom tool transformer |
 | `WithPreInvokeHook(hook)` | Add server-specific pre-invoke hook |
 | `WithPostInvokeHook(hook)` | Add server-specific post-invoke hook |
+| `WithHook(hook)` | Add a combined pre/post-invoke hook |
+| `AddVirtualTool(tool, handler)` | Add a virtual tool scoped to this server |
 | `Enabled(bool)` | Enable/disable the server |
 | `Build()` | Return to proxy builder |
 

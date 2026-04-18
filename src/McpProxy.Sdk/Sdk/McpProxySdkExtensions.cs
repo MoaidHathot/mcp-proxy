@@ -1,12 +1,14 @@
 using McpProxy.Abstractions;
 using McpProxy.Sdk.Authentication;
 using McpProxy.Sdk.Configuration;
+using McpProxy.Sdk.Debugging;
 using McpProxy.Sdk.Hooks;
 using McpProxy.Sdk.Logging;
 using McpProxy.Sdk.Proxy;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
@@ -108,6 +110,12 @@ public static class McpProxySdkExtensions
     {
         services.AddHttpContextAccessor();
         services.AddHttpClient(); // Required for OAuth metadata probing
+
+        // Register null debugging defaults — SDK consumers can override with real implementations
+        services.TryAddSingleton<IHealthTracker>(NullHealthTracker.Instance);
+        services.TryAddSingleton<IHookTracer>(NullHookTracer.Instance);
+        services.TryAddSingleton<IRequestDumper>(NullRequestDumper.Instance);
+
         services.AddSingleton<ProxyClientHandlers>();
         services.AddSingleton<NotificationForwarder>();
         services.AddSingleton<McpClientManager>(sp =>
@@ -117,7 +125,8 @@ public static class McpProxySdkExtensions
             var proxyClientHandlers = sp.GetRequiredService<ProxyClientHandlers>();
             var notificationForwarder = sp.GetRequiredService<NotificationForwarder>();
             var httpContextAccessor = sp.GetService<IHttpContextAccessor>();
-            return new McpClientManager(logger, loggerFactory, proxyClientHandlers, notificationForwarder, httpContextAccessor: httpContextAccessor);
+            var healthTracker = sp.GetService<IHealthTracker>();
+            return new McpClientManager(logger, loggerFactory, proxyClientHandlers, notificationForwarder, healthTracker, httpContextAccessor);
         });
         services.AddSingleton<HookFactory>();
         services.AddSingleton<SdkEnabledProxyServer>(sp =>
@@ -145,16 +154,29 @@ public static class McpProxySdkExtensions
                 return new NoOpPerServerProxyRegistrar();
             }
 
+            var sdkConfig = sp.GetRequiredService<McpProxySdkConfiguration>();
             var logger = sp.GetRequiredService<ILogger<SingleServerProxy>>();
             var clientManager = sp.GetRequiredService<McpClientManager>();
             var httpContextAccessor = sp.GetService<IHttpContextAccessor>();
             var proxies = new Dictionary<string, SingleServerProxy>(StringComparer.OrdinalIgnoreCase);
             var routeToProxy = new Dictionary<string, SingleServerProxy>(StringComparer.OrdinalIgnoreCase);
 
+            // Collect global virtual tools if configured to show on per-server routes
+            var globalVirtualTools = sdkConfig.ShowGlobalVirtualToolsOnPerServerRoutes
+                ? sdkConfig.VirtualTools
+                : [];
+
             foreach (var (serverName, serverConfig) in config.Mcp.Where(m => m.Value.Enabled))
             {
+                // Merge per-server virtual tools with global virtual tools (if flag is set)
+                var serverVirtualTools = new List<VirtualToolDefinition>(globalVirtualTools);
+                if (sdkConfig.ServerStates.TryGetValue(serverName, out var serverState))
+                {
+                    serverVirtualTools.AddRange(serverState.VirtualTools);
+                }
+
                 var proxy = new SingleServerProxy(
-                    logger, clientManager, serverName, serverConfig, httpContextAccessor);
+                    logger, clientManager, serverName, serverConfig, httpContextAccessor, serverVirtualTools);
                 proxies[serverName] = proxy;
 
                 var route = serverConfig.Route ?? $"{config.Proxy.Routing.BasePath}/{serverName}";
@@ -247,17 +269,31 @@ public static class McpProxySdkExtensions
                 var proxy = context.Server!.Services!.GetRequiredService<SdkEnabledProxyServer>();
                 return proxy.GetPromptAsync(context, token);
             })
-            .WithSubscribeToResourcesHandler((context, token) =>
+            .WithSubscribeToResourcesHandler(async (context, token) =>
             {
                 EnsureProxyClientHandlersInitialized(context);
+
+                if (TryGetPerServerProxy(context) is { } singleProxy)
+                {
+                    await singleProxy.SubscribeToResourceAsync(context.Params!.Uri, token).ConfigureAwait(false);
+                    return new EmptyResult();
+                }
+
                 var proxy = context.Server!.Services!.GetRequiredService<SdkEnabledProxyServer>();
-                return proxy.SubscribeToResourceAsync(context, token);
+                return await proxy.SubscribeToResourceAsync(context, token).ConfigureAwait(false);
             })
-            .WithUnsubscribeFromResourcesHandler((context, token) =>
+            .WithUnsubscribeFromResourcesHandler(async (context, token) =>
             {
                 EnsureProxyClientHandlersInitialized(context);
+
+                if (TryGetPerServerProxy(context) is { } singleProxy)
+                {
+                    await singleProxy.UnsubscribeFromResourceAsync(context.Params!.Uri, token).ConfigureAwait(false);
+                    return new EmptyResult();
+                }
+
                 var proxy = context.Server!.Services!.GetRequiredService<SdkEnabledProxyServer>();
-                return proxy.UnsubscribeFromResourceAsync(context, token);
+                return await proxy.UnsubscribeFromResourceAsync(context, token).ConfigureAwait(false);
             });
     }
 
@@ -323,6 +359,19 @@ public static class McpProxySdkHostExtensions
     public static async Task InitializeMcpProxyAsync(this IHost host, CancellationToken cancellationToken = default)
     {
         var sdkConfig = host.Services.GetRequiredService<McpProxySdkConfiguration>();
+
+        // Load and merge configuration file if specified (SDK config takes priority)
+        if (!string.IsNullOrEmpty(sdkConfig.ConfigFilePath))
+        {
+            var fileConfig = await ConfigurationLoader.LoadAsync(sdkConfig.ConfigFilePath, cancellationToken).ConfigureAwait(false);
+
+            // Merge file servers into SDK config — SDK-defined servers take priority
+            foreach (var (name, serverConfig) in fileConfig.Mcp)
+            {
+                sdkConfig.Configuration.Mcp.TryAdd(name, serverConfig);
+            }
+        }
+
         var clientManager = host.Services.GetRequiredService<McpClientManager>();
         var proxyServer = host.Services.GetRequiredService<SdkEnabledProxyServer>();
         var hookFactory = host.Services.GetRequiredService<HookFactory>();
@@ -529,24 +578,6 @@ public static class McpProxySdkHostExtensions
 
         app.UseMcpProxyAuthentication(config);
         return app;
-    }
-
-    /// <summary>
-    /// Configures backend authentication for this server (HTTP/SSE only).
-    /// </summary>
-    /// <param name="builder">The server builder.</param>
-    /// <param name="authType">The authentication type.</param>
-    /// <returns>The builder for chaining.</returns>
-    public static IServerBuilder WithBackendAuth(this IServerBuilder builder, BackendAuthType authType)
-    {
-        if (builder is ServerBuilder serverBuilder)
-        {
-            return serverBuilder.WithBackendAuth(authType);
-        }
-
-        throw new InvalidOperationException(
-            $"WithBackendAuth is only supported on {nameof(ServerBuilder)}. " +
-            $"Actual type: {builder.GetType().Name}");
     }
 
     /// <summary>

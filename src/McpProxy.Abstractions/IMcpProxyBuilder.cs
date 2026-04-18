@@ -63,6 +63,14 @@ public interface IMcpProxyBuilder
     IMcpProxyBuilder AddVirtualTool(Tool tool, Func<CallToolRequestParams, CancellationToken, ValueTask<CallToolResult>> handler);
 
     /// <summary>
+    /// When enabled, global virtual tools (added via <see cref="AddVirtualTool"/>) also appear
+    /// on per-server routes in addition to the unified endpoint. Default is <c>false</c>.
+    /// </summary>
+    /// <param name="enabled">Whether to show global virtual tools on per-server routes.</param>
+    /// <returns>The builder for chaining.</returns>
+    IMcpProxyBuilder WithGlobalVirtualToolsOnPerServerRoutes(bool enabled = true);
+
+    /// <summary>
     /// Registers a tool interceptor that can modify, replace, or remove tools from the aggregated list.
     /// </summary>
     /// <param name="interceptor">The tool interceptor.</param>
@@ -92,6 +100,14 @@ public interface IMcpProxyBuilder
     /// <param name="ttlSeconds">Cache TTL in seconds.</param>
     /// <returns>The builder for chaining.</returns>
     IMcpProxyBuilder WithToolCaching(bool enabled, int ttlSeconds = 300);
+
+    /// <summary>
+    /// Configures the routing mode for the proxy.
+    /// </summary>
+    /// <param name="mode">The routing mode (Unified or PerServer).</param>
+    /// <param name="basePath">The base path for per-server routes (only used when mode is PerServer).</param>
+    /// <returns>The builder for chaining.</returns>
+    IMcpProxyBuilder WithRouting(RoutingMode mode, string? basePath = null);
 
     /// <summary>
     /// Loads configuration from a JSON file and applies it.
@@ -221,6 +237,22 @@ public interface IServerBuilder
     /// <param name="enabled">Whether the server is enabled.</param>
     /// <returns>The builder for chaining.</returns>
     IServerBuilder Enabled(bool enabled = true);
+
+    /// <summary>
+    /// Configures backend authentication for this server (HTTP/SSE only).
+    /// </summary>
+    /// <param name="authType">The authentication type.</param>
+    /// <returns>The builder for chaining.</returns>
+    IServerBuilder WithBackendAuth(BackendAuthType authType);
+
+    /// <summary>
+    /// Adds a virtual tool to this server that is handled directly by the proxy.
+    /// The tool will only appear on this server's per-server route.
+    /// </summary>
+    /// <param name="tool">The tool definition.</param>
+    /// <param name="handler">The handler function.</param>
+    /// <returns>The builder for chaining.</returns>
+    IServerBuilder AddVirtualTool(Tool tool, Func<CallToolRequestParams, CancellationToken, ValueTask<CallToolResult>> handler);
 
     /// <summary>
     /// Returns to the parent proxy builder.
