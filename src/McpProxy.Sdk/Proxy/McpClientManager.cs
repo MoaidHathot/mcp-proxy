@@ -103,6 +103,10 @@ public sealed class McpClientManager : IAsyncDisposable
                     var client = await CreateClientAsync(name, serverConfig, cancellationToken).ConfigureAwait(false);
                     _clients[name] = client;
                 }
+                catch (OperationCanceledException)
+                {
+                    throw; // Propagate cancellation — caller requested abort
+                }
                 catch (Exception ex)
                 {
                     // Log and defer — the backend will be retried on first client request.
@@ -153,6 +157,10 @@ public sealed class McpClientManager : IAsyncDisposable
                     var client = await CreateClientAsync(name, serverConfig, cancellationToken).ConfigureAwait(false);
                     _clients[name] = client;
                     _deferredClients.TryRemove(name, out _);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw; // Propagate cancellation — caller requested abort
                 }
                 catch (Exception ex)
                 {
@@ -217,6 +225,10 @@ public sealed class McpClientManager : IAsyncDisposable
                 _clients[serverName] = client;
                 _deferredClients.TryRemove(serverName, out _);
                 return true;
+            }
+            catch (OperationCanceledException)
+            {
+                throw; // Propagate cancellation — caller requested abort
             }
             catch (Exception ex)
             {
@@ -431,9 +443,15 @@ public sealed class McpClientManager : IAsyncDisposable
     /// </summary>
     private HttpClientTransport CreateHttpTransport(string name, ServerConfiguration config)
     {
+        // Use the explicit transport mode matching the configured type:
+        // - Sse → SSE only (legacy servers)
+        // - Http → Streamable HTTP only (modern servers)
+        // AutoDetect is not used because its SSE fallback path can hang
+        // indefinitely against pure Streamable HTTP backends that accept
+        // the SSE GET request but never emit SSE events.
         var transportMode = config.Type == ServerTransportType.Sse
             ? HttpTransportMode.Sse
-            : HttpTransportMode.AutoDetect;
+            : HttpTransportMode.StreamableHttp;
 
         var transportOptions = new HttpClientTransportOptions
         {

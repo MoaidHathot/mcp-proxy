@@ -252,7 +252,7 @@ Each entry in the `mcp` object configures a backend MCP server.
 | `headers` | object | No | Custom headers (supports `env:VAR`) |
 | `enabled` | bool | No | Whether server is enabled (default: `true`) |
 
-> **Note**: Use `"sse"` for servers that only support Server-Sent Events (most current MCP servers). Use `"http"` for servers that support the newer Streamable HTTP transport (auto-detects and falls back to SSE).
+> **Note**: Use `"sse"` for servers that only support Server-Sent Events (most current MCP servers). Use `"http"` for servers that support the newer Streamable HTTP transport.
 
 ### Tool Filtering
 

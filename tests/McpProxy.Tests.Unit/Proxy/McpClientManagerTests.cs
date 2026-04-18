@@ -353,6 +353,110 @@ public class McpClientManagerTests : IAsyncDisposable
             manager.Clients.Should().BeEmpty();
             manager.HasDeferredClients.Should().BeFalse();
         }
+
+        [Fact]
+        public async Task Throws_OperationCanceledException_When_Token_Already_Cancelled()
+        {
+            // Arrange
+            await using var manager = CreateManager();
+            var config = new ProxyConfiguration
+            {
+                Mcp = new Dictionary<string, ServerConfiguration>
+                {
+                    ["server1"] = new()
+                    {
+                        Type = ServerTransportType.Stdio,
+                        Command = "echo"
+                    }
+                }
+            };
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+
+            // Act
+            Func<Task> act = () => manager.InitializeAsync(config, cts.Token);
+
+            // Assert
+            await act.Should().ThrowAsync<OperationCanceledException>();
+        }
+    }
+
+    public class EnsureDeferredClientsConnectedAsyncTests : McpClientManagerTests
+    {
+        [Fact]
+        public async Task Returns_Immediately_When_No_Deferred_Clients()
+        {
+            // Arrange
+            await using var manager = CreateManager();
+
+            // Act & Assert - should not throw or hang
+            await manager.EnsureDeferredClientsConnectedAsync(TestContext.Current.CancellationToken);
+            manager.Clients.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task Throws_OperationCanceledException_When_Token_Already_Cancelled()
+        {
+            // Arrange
+            await using var manager = CreateManager();
+            // Initialize with a ForwardAuth backend so there's a deferred client
+            var config = new ProxyConfiguration
+            {
+                Mcp = new Dictionary<string, ServerConfiguration>
+                {
+                    ["deferred"] = new()
+                    {
+                        Type = ServerTransportType.Sse,
+                        Url = "https://example.com/mcp/sse",
+                        Auth = new BackendAuthConfiguration
+                        {
+                            Type = BackendAuthType.ForwardAuthorization
+                        }
+                    }
+                }
+            };
+            await manager.InitializeAsync(config, TestContext.Current.CancellationToken);
+            manager.HasDeferredClients.Should().BeTrue();
+
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+
+            // Act
+            Func<Task> act = () => manager.EnsureDeferredClientsConnectedAsync(cts.Token);
+
+            // Assert
+            await act.Should().ThrowAsync<OperationCanceledException>();
+        }
+    }
+
+    public class EnsureDeferredClientConnectedAsyncTests : McpClientManagerTests
+    {
+        [Fact]
+        public async Task Returns_True_When_Already_Connected()
+        {
+            // Arrange
+            var manager = CreateManager();
+            manager.RegisterClient("server1", CreateMockClient(), CreateStdioConfig());
+
+            // Act
+            var result = await manager.EnsureDeferredClientConnectedAsync("server1", TestContext.Current.CancellationToken);
+
+            // Assert
+            result.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task Returns_False_When_Not_Deferred()
+        {
+            // Arrange
+            var manager = CreateManager();
+
+            // Act
+            var result = await manager.EnsureDeferredClientConnectedAsync("nonexistent", TestContext.Current.CancellationToken);
+
+            // Assert
+            result.Should().BeFalse();
+        }
     }
 
     public async ValueTask DisposeAsync()
