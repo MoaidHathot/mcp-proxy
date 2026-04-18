@@ -539,7 +539,7 @@ public sealed class HookFactory
                     return true;
                 }
             }
-            catch
+            catch (JsonException)
             {
                 return false;
             }

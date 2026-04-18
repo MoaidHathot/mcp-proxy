@@ -146,9 +146,9 @@ public sealed class ResourceSubscriptionManager
                     return serverName;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Continue searching other servers
+                ProxyLogger.FindResourceServerSearchFailed(_logger, serverName, ex);
             }
         }
 

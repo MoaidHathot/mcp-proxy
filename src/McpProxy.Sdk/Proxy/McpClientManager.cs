@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using System.Collections.Concurrent;
 
 namespace McpProxy.Sdk.Proxy;
 
@@ -21,9 +22,9 @@ public sealed class McpClientManager : IAsyncDisposable
     private readonly NotificationForwarder? _notificationForwarder;
     private readonly IHealthTracker _healthTracker;
     private readonly IHttpContextAccessor? _httpContextAccessor;
-    private readonly Dictionary<string, McpClientInfo> _clients = [];
-    private readonly Dictionary<string, ServerConfiguration> _deferredClients = [];
-    private readonly Dictionary<string, InteractiveBrowserCredential> _sharedCredentials = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, McpClientInfo> _clients = [];
+    private readonly ConcurrentDictionary<string, ServerConfiguration> _deferredClients = [];
+    private readonly ConcurrentDictionary<string, InteractiveBrowserCredential> _sharedCredentials = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<IDisposable> _disposables = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
     private ClientCapabilitySettings? _capabilitySettings;
@@ -128,7 +129,7 @@ public sealed class McpClientManager : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task EnsureDeferredClientsConnectedAsync(CancellationToken cancellationToken = default)
     {
-        if (_deferredClients.Count == 0)
+        if (_deferredClients.IsEmpty)
         {
             return;
         }
@@ -142,7 +143,7 @@ public sealed class McpClientManager : IAsyncDisposable
             {
                 if (_clients.ContainsKey(name))
                 {
-                    _deferredClients.Remove(name);
+                    _deferredClients.TryRemove(name, out _);
                     continue;
                 }
 
@@ -151,7 +152,7 @@ public sealed class McpClientManager : IAsyncDisposable
                 {
                     var client = await CreateClientAsync(name, serverConfig, cancellationToken).ConfigureAwait(false);
                     _clients[name] = client;
-                    _deferredClients.Remove(name);
+                    _deferredClients.TryRemove(name, out _);
                 }
                 catch (Exception ex)
                 {
@@ -171,7 +172,7 @@ public sealed class McpClientManager : IAsyncDisposable
     /// <summary>
     /// Gets whether there are deferred clients that have not yet connected.
     /// </summary>
-    public bool HasDeferredClients => _deferredClients.Count > 0;
+    public bool HasDeferredClients => !_deferredClients.IsEmpty;
 
     /// <summary>
     /// Attempts to connect a specific deferred client by name. If the client is already
@@ -201,7 +202,7 @@ public sealed class McpClientManager : IAsyncDisposable
             // Double-check after acquiring lock
             if (_clients.ContainsKey(serverName))
             {
-                _deferredClients.Remove(serverName);
+                _deferredClients.TryRemove(serverName, out _);
                 return true;
             }
 
@@ -214,7 +215,7 @@ public sealed class McpClientManager : IAsyncDisposable
             {
                 var client = await CreateClientAsync(serverName, serverConfig, cancellationToken).ConfigureAwait(false);
                 _clients[serverName] = client;
-                _deferredClients.Remove(serverName);
+                _deferredClients.TryRemove(serverName, out _);
                 return true;
             }
             catch (Exception ex)
@@ -232,7 +233,7 @@ public sealed class McpClientManager : IAsyncDisposable
     /// <summary>
     /// Gets the names of backends that are still deferred (not yet connected).
     /// </summary>
-    public IReadOnlyCollection<string> DeferredClientNames => _deferredClients.Keys;
+    public IReadOnlyCollection<string> DeferredClientNames => [.. _deferredClients.Keys];
 
     /// <summary>
     /// Gets a client by server name.
@@ -628,9 +629,9 @@ public sealed class McpClientManager : IAsyncDisposable
             {
                 disposable.Dispose();
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore disposal errors
+                ProxyLogger.DisposableCleanupFailed(_logger, ex);
             }
         }
 

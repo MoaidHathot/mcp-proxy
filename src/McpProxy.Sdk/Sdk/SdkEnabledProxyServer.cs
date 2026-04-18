@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Collections.Concurrent;
 
 namespace McpProxy.Sdk.Sdk;
 
@@ -19,13 +20,14 @@ namespace McpProxy.Sdk.Sdk;
 public sealed class SdkEnabledProxyServer
 {
     private readonly ILogger<SdkEnabledProxyServer> _logger;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly McpClientManager _clientManager;
     private readonly ProxyConfiguration _configuration;
     private readonly McpProxySdkConfiguration _sdkConfiguration;
     private readonly IToolCache _toolCache;
     private readonly IHttpContextAccessor? _httpContextAccessor;
     private readonly int _cacheTtlSeconds;
-    private readonly Dictionary<string, HookPipeline> _hookPipelines = [];
+    private readonly ConcurrentDictionary<string, HookPipeline> _hookPipelines = [];
     private readonly Dictionary<string, IToolFilter> _toolFilters = [];
     private readonly Dictionary<string, IResourceFilter> _resourceFilters = [];
     private readonly Dictionary<string, IPromptFilter> _promptFilters = [];
@@ -42,12 +44,14 @@ public sealed class SdkEnabledProxyServer
     /// </summary>
     public SdkEnabledProxyServer(
         ILogger<SdkEnabledProxyServer> logger,
+        ILoggerFactory loggerFactory,
         McpClientManager clientManager,
         McpProxySdkConfiguration sdkConfiguration,
         IToolCache? toolCache = null,
         IHttpContextAccessor? httpContextAccessor = null)
     {
         _logger = logger;
+        _loggerFactory = loggerFactory;
         _clientManager = clientManager;
         _configuration = sdkConfiguration.Configuration;
         _sdkConfiguration = sdkConfiguration;
@@ -72,8 +76,7 @@ public sealed class SdkEnabledProxyServer
     private HookPipeline CreateGlobalHookPipeline(McpProxySdkConfiguration config)
     {
         var pipeline = new HookPipeline(
-            _logger as ILogger<HookPipeline> ?? 
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<HookPipeline>.Instance);
+            _loggerFactory.CreateLogger<HookPipeline>());
 
         foreach (var hook in config.GlobalPreInvokeHooks)
         {
@@ -130,7 +133,7 @@ public sealed class SdkEnabledProxyServer
     /// </summary>
     public HookPipeline? GetHookPipeline(string serverName)
     {
-        return _hookPipelines.TryGetValue(serverName, out var pipeline) ? pipeline : null;
+        return _hookPipelines.GetValueOrDefault(serverName);
     }
 
     /// <summary>
@@ -668,9 +671,9 @@ public sealed class SdkEnabledProxyServer
                     };
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Continue searching other servers
+                _logger.LogWarning(ex, "Error searching server '{ServerName}' for tool '{ToolName}', continuing to next server", serverName, originalName);
             }
         }
 
@@ -727,9 +730,9 @@ public sealed class SdkEnabledProxyServer
                     };
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Continue searching other servers
+                _logger.LogWarning(ex, "Error searching server '{ServerName}' for resource '{ResourceUri}', continuing to next server", serverName, originalUri);
             }
         }
 
@@ -768,9 +771,9 @@ public sealed class SdkEnabledProxyServer
                     };
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Continue searching other servers
+                _logger.LogWarning(ex, "Error searching server '{ServerName}' for prompt '{PromptName}', continuing to next server", serverName, originalName);
             }
         }
 

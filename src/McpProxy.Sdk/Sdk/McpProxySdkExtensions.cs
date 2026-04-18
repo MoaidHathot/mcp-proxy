@@ -123,10 +123,11 @@ public static class McpProxySdkExtensions
         services.AddSingleton<SdkEnabledProxyServer>(sp =>
         {
             var logger = sp.GetRequiredService<ILogger<SdkEnabledProxyServer>>();
+            var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
             var clientManager = sp.GetRequiredService<McpClientManager>();
             var sdkConfig = sp.GetRequiredService<McpProxySdkConfiguration>();
             var httpContextAccessor = sp.GetService<IHttpContextAccessor>();
-            return new SdkEnabledProxyServer(logger, clientManager, sdkConfig, null, httpContextAccessor);
+            return new SdkEnabledProxyServer(logger, loggerFactory, clientManager, sdkConfig, null, httpContextAccessor);
         });
 
         // Add OAuth metadata services
