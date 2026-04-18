@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Product>MCP Proxy</Product>
     <Authors>Moaid Hathot</Authors>
-    <Version>1.11.0</Version>
+    <Version>1.12.0</Version>
 
     <DotnetRuntimeVersion>9.0.0</DotnetRuntimeVersion>
     <Deterministic>true</Deterministic>
