@@ -159,13 +159,6 @@ public static class McpProxySdkExtensions
             return new PerServerProxyRegistrar(proxies);
         });
 
-        // Add telemetry
-        services.AddSingleton(sp =>
-        {
-            var config = sp.GetRequiredService<ProxyConfiguration>();
-            return config;
-        });
-
         return services;
     }
 
