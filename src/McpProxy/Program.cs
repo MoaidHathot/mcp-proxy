@@ -184,23 +184,14 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
     ConfigureLogging(builder.Services, verbose);
     RegisterCoreServices(builder.Services, configuration);
 
-    // Register SingleServerProxy instances for PerServer mode
+    // Required for TryGetPerServerProxy to resolve per-server routes via HttpContext.Request.Path
+    builder.Services.AddHttpContextAccessor();
+
+    // Register SingleServerProxy instances for PerServer mode.
+    // A single IPerServerProxyRegistrar holds all instances, shared by both MCP Streamable HTTP
+    // handlers and REST sub-routes, ensuring hooks and configuration are applied consistently.
     if (configuration.Proxy.Routing.Mode == RoutingMode.PerServer)
     {
-        var perServerProxies = new Dictionary<string, SingleServerProxy>(StringComparer.OrdinalIgnoreCase);
-        var perServerRoutes = new Dictionary<string, SingleServerProxy>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var (serverName, serverConfig) in configuration.Mcp.Where(m => m.Value.Enabled))
-        {
-            builder.Services.AddKeyedSingleton(serverName, (sp, _) =>
-            {
-                var singleLogger = sp.GetRequiredService<ILogger<SingleServerProxy>>();
-                var clientMgr = sp.GetRequiredService<McpClientManager>();
-                return new SingleServerProxy(singleLogger, clientMgr, serverName, serverConfig);
-            });
-        }
-
-        // Register IPerServerProxyRegistrar so route-aware MCP handlers can delegate to SingleServerProxy
         builder.Services.AddSingleton<IPerServerProxyRegistrar>(sp =>
         {
             var singleLogger = sp.GetRequiredService<ILogger<SingleServerProxy>>();
@@ -258,9 +249,10 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
     // Configure SingleServerProxy hook pipelines for PerServer mode
     if (configuration.Proxy.Routing.Mode == RoutingMode.PerServer)
     {
+        var registrar = app.Services.GetRequiredService<IPerServerProxyRegistrar>();
         foreach (var (serverName, serverConfig) in configuration.Mcp.Where(m => m.Value.Enabled))
         {
-            var singleServerProxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+            var singleServerProxy = registrar.GetProxy(serverName);
             ConfigureSingleServerHookPipeline(serverName, serverConfig, singleServerProxy, hookFactory, pipelineLogger);
         }
     }
@@ -270,6 +262,8 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
     // Map MCP endpoints based on routing mode
     if (configuration.Proxy.Routing.Mode == RoutingMode.PerServer)
     {
+        var registrar = app.Services.GetRequiredService<IPerServerProxyRegistrar>();
+
         // PerServer mode: Each server gets its own endpoint
         // Map to base path for unified endpoint (still available for discovery)
         app.MapMcp(configuration.Proxy.Routing.BasePath);
@@ -283,7 +277,7 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
             app.MapMcp(route);
             
             // Map REST sub-routes for backward compatibility
-            MapSingleServerEndpoint(app, serverName, route);
+            MapSingleServerEndpoint(app, serverName, route, registrar);
             ProxyLogger.RegisteredServerEndpoint(logger, serverName, route);
         }
     }
@@ -305,48 +299,48 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
     await app.RunAsync().ConfigureAwait(false);
 }
 
-void MapSingleServerEndpoint(WebApplication app, string serverName, string route)
+void MapSingleServerEndpoint(WebApplication app, string serverName, string route, IPerServerProxyRegistrar registrar)
 {
     // Create MCP-like endpoints for single server
     // These endpoints allow direct access to a specific backend server
     app.MapPost($"{route}/tools/list", async (HttpContext context) =>
     {
-        var proxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+        var proxy = registrar.GetProxy(serverName);
         var result = await proxy.ListToolsAsync(context.RequestAborted).ConfigureAwait(false);
         return Results.Json(result);
     });
     
     app.MapPost($"{route}/tools/call", async (HttpContext context, ModelContextProtocol.Protocol.CallToolRequestParams request) =>
     {
-        var proxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+        var proxy = registrar.GetProxy(serverName);
         var result = await proxy.CallToolAsync(request, context.RequestAborted).ConfigureAwait(false);
         return Results.Json(result);
     });
     
     app.MapPost($"{route}/resources/list", async (HttpContext context) =>
     {
-        var proxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+        var proxy = registrar.GetProxy(serverName);
         var result = await proxy.ListResourcesAsync(context.RequestAborted).ConfigureAwait(false);
         return Results.Json(result);
     });
     
     app.MapPost($"{route}/resources/read", async (HttpContext context, ModelContextProtocol.Protocol.ReadResourceRequestParams request) =>
     {
-        var proxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+        var proxy = registrar.GetProxy(serverName);
         var result = await proxy.ReadResourceAsync(request, context.RequestAborted).ConfigureAwait(false);
         return Results.Json(result);
     });
     
     app.MapPost($"{route}/prompts/list", async (HttpContext context) =>
     {
-        var proxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+        var proxy = registrar.GetProxy(serverName);
         var result = await proxy.ListPromptsAsync(context.RequestAborted).ConfigureAwait(false);
         return Results.Json(result);
     });
     
     app.MapPost($"{route}/prompts/get", async (HttpContext context, ModelContextProtocol.Protocol.GetPromptRequestParams request) =>
     {
-        var proxy = app.Services.GetRequiredKeyedService<SingleServerProxy>(serverName);
+        var proxy = registrar.GetProxy(serverName);
         var result = await proxy.GetPromptAsync(request, context.RequestAborted).ConfigureAwait(false);
         return Results.Json(result);
     });

@@ -210,6 +210,11 @@ public sealed class McpProxyServer
     /// </summary>
     public async ValueTask<ListToolsResult> ListToolsCoreAsync(CancellationToken cancellationToken)
     {
+        // Ensure deferred backends are connected before listing tools.
+        // Without this, backends using deferConnection or ForwardAuthorization
+        // would be absent from _clients and return zero tools.
+        await _clientManager.EnsureDeferredClientsConnectedAsync(cancellationToken).ConfigureAwait(false);
+
         ProxyLogger.ListingTools(_logger, _clientManager.Clients.Count);
 
         var allTools = new List<Tool>();
@@ -275,6 +280,8 @@ public sealed class McpProxyServer
         CallToolRequestParams request,
         CancellationToken cancellationToken)
     {
+        await _clientManager.EnsureDeferredClientsConnectedAsync(cancellationToken).ConfigureAwait(false);
+
         var toolName = request.Name;
 
         // Find the tool and its source server
@@ -418,6 +425,8 @@ public sealed class McpProxyServer
         RequestContext<ListResourcesRequestParams> context,
         CancellationToken cancellationToken)
     {
+        await _clientManager.EnsureDeferredClientsConnectedAsync(cancellationToken).ConfigureAwait(false);
+
         ProxyLogger.ListingResources(_logger, _clientManager.Clients.Count);
 
         var allResources = new List<Resource>();
@@ -467,6 +476,8 @@ public sealed class McpProxyServer
         RequestContext<ReadResourceRequestParams> context,
         CancellationToken cancellationToken)
     {
+        await _clientManager.EnsureDeferredClientsConnectedAsync(cancellationToken).ConfigureAwait(false);
+
         var uri = context.Params!.Uri;
 
         // Find the resource and its source server
@@ -495,6 +506,8 @@ public sealed class McpProxyServer
         RequestContext<ListPromptsRequestParams> context,
         CancellationToken cancellationToken)
     {
+        await _clientManager.EnsureDeferredClientsConnectedAsync(cancellationToken).ConfigureAwait(false);
+
         ProxyLogger.ListingPrompts(_logger, _clientManager.Clients.Count);
 
         var allPrompts = new List<Prompt>();
@@ -544,6 +557,8 @@ public sealed class McpProxyServer
         RequestContext<GetPromptRequestParams> context,
         CancellationToken cancellationToken)
     {
+        await _clientManager.EnsureDeferredClientsConnectedAsync(cancellationToken).ConfigureAwait(false);
+
         var promptName = context.Params!.Name;
 
         // Find the prompt and its source server
@@ -808,6 +823,8 @@ public sealed class McpProxyServer
         string uri,
         CancellationToken cancellationToken)
     {
+        await _clientManager.EnsureDeferredClientsConnectedAsync(cancellationToken).ConfigureAwait(false);
+
         ProxyLogger.SubscribingToResource(_logger, uri);
 
         // Find which server owns this resource
@@ -857,6 +874,8 @@ public sealed class McpProxyServer
         string uri,
         CancellationToken cancellationToken)
     {
+        await _clientManager.EnsureDeferredClientsConnectedAsync(cancellationToken).ConfigureAwait(false);
+
         ProxyLogger.UnsubscribingFromResource(_logger, uri);
 
         // Find which server owns this resource

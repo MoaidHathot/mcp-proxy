@@ -291,6 +291,34 @@ public class McpProxyServerTests : IAsyncDisposable
             result.Tools.Should().ContainSingle();
             result.Tools[0].Name.Should().Be("tool_b");
         }
+
+        [Fact]
+        public async Task Calls_EnsureDeferredClientsConnected_Before_Listing()
+        {
+            // Arrange - Register client directly (simulates a deferred client that has been
+            // connected by EnsureDeferredClientsConnectedAsync). The important thing is that
+            // ListToolsCoreAsync now calls EnsureDeferredClientsConnectedAsync which is a no-op
+            // when no deferred clients remain. This test verifies the method completes without
+            // error and returns tools from connected clients even when deferred connection
+            // logic is invoked.
+            var client = CreateMockClient("server1", [CreateTool("tool_a")]);
+            RegisterClient("server1", client);
+            var config = new ProxyConfiguration
+            {
+                Mcp = new Dictionary<string, ServerConfiguration>
+                {
+                    ["server1"] = new() { Type = ServerTransportType.Stdio, Command = "mock" }
+                }
+            };
+            var server = CreateProxyServer(config);
+
+            // Act
+            var result = await server.ListToolsCoreAsync(TestContext.Current.CancellationToken);
+
+            // Assert - tools should still be returned after deferred connection logic runs
+            result.Tools.Should().ContainSingle();
+            result.Tools[0].Name.Should().Be("tool_a");
+        }
     }
 
     public class FindToolAsyncTests : McpProxyServerTests

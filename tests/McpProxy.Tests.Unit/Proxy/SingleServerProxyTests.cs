@@ -109,6 +109,65 @@ public class SingleServerProxyTests : IAsyncDisposable
         }
 
         [Fact]
+        public async Task ListToolsAsync_WhenClientConnected_ReturnsToolsFromBackend()
+        {
+            // Arrange
+            var client = Substitute.For<IMcpClientWrapper>();
+            client.ListToolsAsync(Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<IList<Tool>>([
+                    new Tool { Name = "tool_a", Description = "Tool A" },
+                    new Tool { Name = "tool_b", Description = "Tool B" }
+                ]));
+            _clientManager.RegisterClient(_serverName, client, new ServerConfiguration
+            {
+                Type = ServerTransportType.Stdio,
+                Command = "mock"
+            });
+            var proxy = CreateProxy();
+
+            // Act
+            var result = await proxy.ListToolsAsync(TestContext.Current.CancellationToken);
+
+            // Assert
+            result.Tools.Should().HaveCount(2);
+            result.Tools.Select(t => t.Name).Should().Contain(["tool_a", "tool_b"]);
+        }
+
+        [Fact]
+        public async Task ListToolsAsync_ReturnsOnlyThisServersTools()
+        {
+            // Arrange - register two clients but proxy is bound to _serverName only
+            var client1 = Substitute.For<IMcpClientWrapper>();
+            client1.ListToolsAsync(Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<IList<Tool>>([
+                    new Tool { Name = "calendar_tool", Description = "Calendar" }
+                ]));
+            var client2 = Substitute.For<IMcpClientWrapper>();
+            client2.ListToolsAsync(Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<IList<Tool>>([
+                    new Tool { Name = "mail_tool", Description = "Mail" }
+                ]));
+            _clientManager.RegisterClient(_serverName, client1, new ServerConfiguration
+            {
+                Type = ServerTransportType.Stdio,
+                Command = "mock"
+            });
+            _clientManager.RegisterClient("other-server", client2, new ServerConfiguration
+            {
+                Type = ServerTransportType.Stdio,
+                Command = "mock"
+            });
+            var proxy = CreateProxy();
+
+            // Act
+            var result = await proxy.ListToolsAsync(TestContext.Current.CancellationToken);
+
+            // Assert - should only return tools from _serverName, not other-server
+            result.Tools.Should().ContainSingle();
+            result.Tools[0].Name.Should().Be("calendar_tool");
+        }
+
+        [Fact]
         public async Task ListToolsAsync_WithFilter_FiltersTools()
         {
             // Arrange
