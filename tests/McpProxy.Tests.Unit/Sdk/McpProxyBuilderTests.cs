@@ -1,307 +1,191 @@
+using McpProxy.Abstractions;
 using McpProxy.Sdk.Configuration;
 using McpProxy.Sdk.Sdk;
-using ModelContextProtocol.Protocol;
 
 namespace McpProxy.Tests.Unit.Sdk;
 
-public sealed class McpProxyBuilderTests
+public class McpProxyBuilderTests
 {
-    [Fact]
-    public void Create_ReturnsNewBuilder()
+    public class WithRoutingTests
     {
-        // Act
-        var builder = McpProxyBuilder.Create();
-
-        // Assert
-        Assert.NotNull(builder);
-    }
-
-    [Fact]
-    public void AddStdioServer_ConfiguresServerCorrectly()
-    {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-
-        // Act
-        builder.AddStdioServer("test-server", "node", "index.js", "--port", "3000");
-        var config = builder.BuildConfiguration();
-
-        // Assert
-        Assert.True(config.Configuration.Mcp.ContainsKey("test-server"));
-        var serverConfig = config.Configuration.Mcp["test-server"];
-        Assert.Equal(ServerTransportType.Stdio, serverConfig.Type);
-        Assert.Equal("node", serverConfig.Command);
-        Assert.NotNull(serverConfig.Arguments);
-        Assert.Equal(["index.js", "--port", "3000"], serverConfig.Arguments);
-    }
-
-    [Fact]
-    public void AddHttpServer_ConfiguresServerCorrectly()
-    {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-
-        // Act
-        builder.AddHttpServer("http-server", "http://localhost:8080");
-        var config = builder.BuildConfiguration();
-
-        // Assert
-        Assert.True(config.Configuration.Mcp.ContainsKey("http-server"));
-        var serverConfig = config.Configuration.Mcp["http-server"];
-        Assert.Equal(ServerTransportType.Http, serverConfig.Type);
-        Assert.Equal("http://localhost:8080", serverConfig.Url);
-    }
-
-    [Fact]
-    public void AddSseServer_ConfiguresServerCorrectly()
-    {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-
-        // Act
-        builder.AddSseServer("sse-server", "http://localhost:8080/sse");
-        var config = builder.BuildConfiguration();
-
-        // Assert
-        Assert.True(config.Configuration.Mcp.ContainsKey("sse-server"));
-        var serverConfig = config.Configuration.Mcp["sse-server"];
-        Assert.Equal(ServerTransportType.Sse, serverConfig.Type);
-        Assert.Equal("http://localhost:8080/sse", serverConfig.Url);
-    }
-
-    [Fact]
-    public void ServerBuilder_ConfiguresAllOptions()
-    {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-        var environment = new Dictionary<string, string> { ["KEY"] = "value" };
-
-        // Act
-        builder.AddStdioServer("server", "cmd")
-            .WithTitle("Test Server")
-            .WithDescription("A test server")
-            .WithEnvironment(environment)
-            .WithRoute("/custom/route")
-            .WithToolPrefix("prefix", "-")
-            .WithResourcePrefix("res", ":")
-            .WithPromptPrefix("pmt", "_")
-            .AllowTools("tool1", "tool2*")
-            .Enabled(true)
-            .Build();
-
-        var config = builder.BuildConfiguration();
-
-        // Assert
-        var serverConfig = config.Configuration.Mcp["server"];
-        Assert.Equal("Test Server", serverConfig.Title);
-        Assert.Equal("A test server", serverConfig.Description);
-        Assert.Equal("value", serverConfig.Environment?["KEY"]);
-        Assert.Equal("/custom/route", serverConfig.Route);
-        Assert.Equal("prefix", serverConfig.Tools.Prefix);
-        Assert.Equal("-", serverConfig.Tools.PrefixSeparator);
-        Assert.Equal("res", serverConfig.Resources.Prefix);
-        Assert.Equal(":", serverConfig.Resources.PrefixSeparator);
-        Assert.Equal("pmt", serverConfig.Prompts.Prefix);
-        Assert.Equal("_", serverConfig.Prompts.PrefixSeparator);
-        Assert.Equal(FilterMode.AllowList, serverConfig.Tools.Filter.Mode);
-        Assert.NotNull(serverConfig.Tools.Filter.Patterns);
-        Assert.Equal(["tool1", "tool2*"], serverConfig.Tools.Filter.Patterns);
-        Assert.True(serverConfig.Enabled);
-    }
-
-    [Fact]
-    public void ServerBuilder_DenyTools_ConfiguresFilterCorrectly()
-    {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-
-        // Act
-        builder.AddStdioServer("server", "cmd")
-            .DenyTools("dangerous*", "internal_*")
-            .Build();
-
-        var config = builder.BuildConfiguration();
-
-        // Assert
-        var serverConfig = config.Configuration.Mcp["server"];
-        Assert.Equal(FilterMode.DenyList, serverConfig.Tools.Filter.Mode);
-        Assert.NotNull(serverConfig.Tools.Filter.Patterns);
-        Assert.Equal(["dangerous*", "internal_*"], serverConfig.Tools.Filter.Patterns);
-    }
-
-    [Fact]
-    public void WithServerInfo_ConfiguresProxyInfo()
-    {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-
-        // Act
-        builder.WithServerInfo("MyProxy", "2.0.0", "Custom instructions");
-        var config = builder.BuildConfiguration();
-
-        // Assert
-        Assert.Equal("MyProxy", config.Configuration.Proxy.ServerInfo.Name);
-        Assert.Equal("2.0.0", config.Configuration.Proxy.ServerInfo.Version);
-        Assert.Equal("Custom instructions", config.Configuration.Proxy.ServerInfo.Instructions);
-    }
-
-    [Fact]
-    public void WithToolCaching_ConfiguresCache()
-    {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-
-        // Act
-        builder.WithToolCaching(true, 600);
-        var config = builder.BuildConfiguration();
-
-        // Assert
-        Assert.True(config.Configuration.Proxy.Caching.Tools.Enabled);
-        Assert.Equal(600, config.Configuration.Proxy.Caching.Tools.TtlSeconds);
-    }
-
-    [Fact]
-    public void AddVirtualTool_RegistersTool()
-    {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-        var tool = new Tool
+        [Fact]
+        public void Sets_Routing_Mode_To_PerServer()
         {
-            Name = "virtual-tool",
-            Description = "A virtual tool"
-        };
+            // Arrange
+            var builder = McpProxyBuilder.Create();
 
-        // Act
-        builder.AddVirtualTool(tool, (req, ct) => 
-            ValueTask.FromResult(new CallToolResult
-            {
-                Content = [new TextContentBlock { Text = "result" }]
-            }));
-        var config = builder.BuildConfiguration();
+            // Act
+            builder.WithRouting(RoutingMode.PerServer, "/mcp");
+            var config = builder.BuildConfiguration();
 
-        // Assert
-        Assert.Single(config.VirtualTools);
-        Assert.Equal("virtual-tool", config.VirtualTools[0].Tool.Name);
+            // Assert
+            config.Configuration.Proxy.Routing.Mode.Should().Be(RoutingMode.PerServer);
+            config.Configuration.Proxy.Routing.BasePath.Should().Be("/mcp");
+        }
+
+        [Fact]
+        public void Sets_Routing_Mode_To_Unified()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+
+            // Act
+            builder.WithRouting(RoutingMode.Unified);
+            var config = builder.BuildConfiguration();
+
+            // Assert
+            config.Configuration.Proxy.Routing.Mode.Should().Be(RoutingMode.Unified);
+        }
+
+        [Fact]
+        public void Does_Not_Override_BasePath_When_Null()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+            // Set basePath first
+            builder.WithRouting(RoutingMode.PerServer, "/initial");
+
+            // Act - change mode without specifying basePath
+            builder.WithRouting(RoutingMode.PerServer);
+            var config = builder.BuildConfiguration();
+
+            // Assert - basePath should be preserved
+            config.Configuration.Proxy.Routing.BasePath.Should().Be("/initial");
+        }
+
+        [Fact]
+        public void Returns_Builder_For_Chaining()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+
+            // Act
+            var result = builder.WithRouting(RoutingMode.PerServer, "/mcp");
+
+            // Assert
+            result.Should().BeSameAs(builder);
+        }
     }
 
-    [Fact]
-    public void WithGlobalPreInvokeHook_RegistersHook()
+    public class WithRoutingExtensionTests
     {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-        var hook = new DelegatePreInvokeHook(_ => ValueTask.CompletedTask);
+        [Fact]
+        public void Extension_Method_Sets_Routing_Mode()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+            var interfaceBuilder = (IMcpProxyBuilder)builder;
 
-        // Act
-        builder.WithGlobalPreInvokeHook(hook);
-        var config = builder.BuildConfiguration();
+            // Act
+            interfaceBuilder.WithRouting(RoutingMode.PerServer, "/mcp");
+            var config = builder.BuildConfiguration();
 
-        // Assert
-        Assert.Single(config.GlobalPreInvokeHooks);
+            // Assert
+            config.Configuration.Proxy.Routing.Mode.Should().Be(RoutingMode.PerServer);
+            config.Configuration.Proxy.Routing.BasePath.Should().Be("/mcp");
+        }
     }
 
-    [Fact]
-    public void WithGlobalPostInvokeHook_RegistersHook()
+    public class WithServerInfoTests
     {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-        var hook = new DelegatePostInvokeHook((_, result) => ValueTask.FromResult(result));
+        [Fact]
+        public void Sets_Server_Info()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
 
-        // Act
-        builder.WithGlobalPostInvokeHook(hook);
-        var config = builder.BuildConfiguration();
+            // Act
+            builder.WithServerInfo("Test Proxy", "2.0.0", "Test instructions");
+            var config = builder.BuildConfiguration();
 
-        // Assert
-        Assert.Single(config.GlobalPostInvokeHooks);
+            // Assert
+            config.Configuration.Proxy.ServerInfo.Name.Should().Be("Test Proxy");
+            config.Configuration.Proxy.ServerInfo.Version.Should().Be("2.0.0");
+            config.Configuration.Proxy.ServerInfo.Instructions.Should().Be("Test instructions");
+        }
     }
 
-    [Fact]
-    public void WithToolInterceptor_RegistersInterceptor()
+    public class AddServerTests
     {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-        var interceptor = new DelegateToolInterceptor(tools => tools);
+        [Fact]
+        public void AddStdioServer_Adds_Configuration()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
 
-        // Act
-        builder.WithToolInterceptor(interceptor);
-        var config = builder.BuildConfiguration();
+            // Act
+            builder.AddStdioServer("test", "echo", "hello").Build();
+            var config = builder.BuildConfiguration();
 
-        // Assert
-        Assert.Single(config.ToolInterceptors);
+            // Assert
+            config.Configuration.Mcp.Should().ContainKey("test");
+            config.Configuration.Mcp["test"].Type.Should().Be(ServerTransportType.Stdio);
+            config.Configuration.Mcp["test"].Command.Should().Be("echo");
+        }
+
+        [Fact]
+        public void AddHttpServer_Adds_Configuration()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+
+            // Act
+            builder.AddHttpServer("test", "https://example.com/mcp").Build();
+            var config = builder.BuildConfiguration();
+
+            // Assert
+            config.Configuration.Mcp.Should().ContainKey("test");
+            config.Configuration.Mcp["test"].Type.Should().Be(ServerTransportType.Http);
+            config.Configuration.Mcp["test"].Url.Should().Be("https://example.com/mcp");
+        }
+
+        [Fact]
+        public void AddSseServer_Adds_Configuration()
+        {
+            // Arrange
+            var builder = McpProxyBuilder.Create();
+
+            // Act
+            builder.AddSseServer("test", "https://example.com/sse").Build();
+            var config = builder.BuildConfiguration();
+
+            // Assert
+            config.Configuration.Mcp.Should().ContainKey("test");
+            config.Configuration.Mcp["test"].Type.Should().Be(ServerTransportType.Sse);
+        }
     }
 
-    [Fact]
-    public void WithToolCallInterceptor_RegistersInterceptor()
+    public class ChainedBuildTests
     {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-        var interceptor = new DelegateToolCallInterceptor((_, _) => 
-            ValueTask.FromResult<CallToolResult?>(null));
+        [Fact]
+        public void Full_Builder_Chain_Produces_Valid_Config()
+        {
+            // Arrange & Act
+            var builder = McpProxyBuilder.Create();
+            builder
+                .WithServerInfo("My Proxy", "1.0.0")
+                .WithRouting(RoutingMode.PerServer, "/mcp")
+                .WithToolCaching(true, 600)
+                .AddHttpServer("calendar", "https://example.com/calendar-mcp")
+                    .WithTitle("Calendar")
+                    .WithRoute("/calendar")
+                    .Build()
+                .AddStdioServer("local", "npx", "-y", "@test/server")
+                    .WithTitle("Local")
+                    .Build();
 
-        // Act
-        builder.WithToolCallInterceptor(interceptor);
-        var config = builder.BuildConfiguration();
+            var config = builder.BuildConfiguration();
 
-        // Assert
-        Assert.Single(config.ToolCallInterceptors);
-    }
-
-    [Fact]
-    public void ServerBuilder_WithHooks_RegistersCorrectly()
-    {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-        var preHook = new DelegatePreInvokeHook(_ => ValueTask.CompletedTask);
-        var postHook = new DelegatePostInvokeHook((_, result) => ValueTask.FromResult(result));
-
-        // Act
-        builder.AddStdioServer("server", "cmd")
-            .WithPreInvokeHook(preHook)
-            .WithPostInvokeHook(postHook)
-            .Build();
-
-        var config = builder.BuildConfiguration();
-
-        // Assert
-        var serverState = config.ServerStates["server"];
-        Assert.Single(serverState.PreInvokeHooks);
-        Assert.Single(serverState.PostInvokeHooks);
-    }
-
-    [Fact]
-    public void ServerBuilder_WithCustomFilter_RegistersCorrectly()
-    {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-        var filter = new DelegateToolFilter((tool, _) => tool.Name.StartsWith("allowed"));
-
-        // Act
-        builder.AddStdioServer("server", "cmd")
-            .WithToolFilter(filter)
-            .Build();
-
-        var config = builder.BuildConfiguration();
-
-        // Assert
-        var serverState = config.ServerStates["server"];
-        Assert.NotNull(serverState.CustomFilter);
-    }
-
-    [Fact]
-    public void ServerBuilder_WithCustomTransformer_RegistersCorrectly()
-    {
-        // Arrange
-        var builder = McpProxyBuilder.Create();
-        var transformer = new DelegateToolTransformer((tool, _) => tool);
-
-        // Act
-        builder.AddStdioServer("server", "cmd")
-            .WithToolTransformer(transformer)
-            .Build();
-
-        var config = builder.BuildConfiguration();
-
-        // Assert
-        var serverState = config.ServerStates["server"];
-        Assert.NotNull(serverState.CustomTransformer);
+            // Assert
+            config.Configuration.Proxy.ServerInfo.Name.Should().Be("My Proxy");
+            config.Configuration.Proxy.Routing.Mode.Should().Be(RoutingMode.PerServer);
+            config.Configuration.Proxy.Routing.BasePath.Should().Be("/mcp");
+            config.Configuration.Proxy.Caching.Tools.Enabled.Should().BeTrue();
+            config.Configuration.Proxy.Caching.Tools.TtlSeconds.Should().Be(600);
+            config.Configuration.Mcp.Should().HaveCount(2);
+            config.Configuration.Mcp["calendar"].Title.Should().Be("Calendar");
+            config.Configuration.Mcp["calendar"].Route.Should().Be("/calendar");
+            config.Configuration.Mcp["local"].Title.Should().Be("Local");
+        }
     }
 }

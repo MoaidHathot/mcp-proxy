@@ -13,8 +13,8 @@
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.5" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.5" />
     <PackageVersion Include="Microsoft.Identity.Client.Extensions.Msal" Version="4.82.1" />
-    <PackageVersion Include="ModelContextProtocol" Version="1.0.0" />
-    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.0.0" />
+    <PackageVersion Include="ModelContextProtocol" Version="1.2.0" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.2.0" />
     <PackageVersion Include="Dumpify" Version="0.7.0" />
     <!-- Authentication -->
     <PackageVersion Include="Azure.Identity" Version="1.13.2" />
@@ -29,6 +29,8 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
     <!-- CLI -->
     <PackageVersion Include="System.CommandLine" Version="2.0.0-beta5.25306.1" />
+    <!-- Transitive vulnerability overrides -->
+    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.6" />
     <!-- Test packages - Microsoft Testing Platform with xUnit v3 -->
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.5.1" />
     <PackageVersion Include="xunit.v3.mtp-v2" Version="3.2.2" />

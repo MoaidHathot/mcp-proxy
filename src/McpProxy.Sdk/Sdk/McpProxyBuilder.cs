@@ -170,6 +170,23 @@ public sealed class McpProxyBuilder : IMcpProxyBuilder
         return this;
     }
 
+    /// <summary>
+    /// Configures the routing mode for the proxy.
+    /// </summary>
+    /// <param name="mode">The routing mode (Unified or PerServer).</param>
+    /// <param name="basePath">The base path for per-server routes (only used when mode is PerServer).</param>
+    /// <returns>The builder for chaining.</returns>
+    public IMcpProxyBuilder WithRouting(RoutingMode mode, string? basePath = null)
+    {
+        _configuration.Proxy.Routing.Mode = mode;
+        if (basePath is not null)
+        {
+            _configuration.Proxy.Routing.BasePath = basePath;
+        }
+
+        return this;
+    }
+
     /// <inheritdoc />
     public IMcpProxyBuilder WithConfigurationFile(string configPath)
     {

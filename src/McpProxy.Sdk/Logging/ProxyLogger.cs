@@ -486,4 +486,7 @@ public static partial class ProxyLogger
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Error disposing resource during cleanup")]
     public static partial void DisposableCleanupFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Backend server '{ServerName}' disconnected unexpectedly")]
+    public static partial void BackendDisconnectedUnexpectedly(ILogger logger, string serverName, Exception exception);
 }

@@ -1,4 +1,5 @@
 using McpProxy.Abstractions;
+using McpProxy.Sdk.Configuration;
 using ModelContextProtocol.Protocol;
 
 namespace McpProxy.Sdk.Sdk;
@@ -66,6 +67,28 @@ public static class McpProxyBuilderFluentExtensions
         int priority = 0)
     {
         return builder.WithGlobalPostInvokeHook(DelegatePostInvokeHook.FromFunc(handler, priority));
+    }
+
+    /// <summary>
+    /// Configures the routing mode for the proxy.
+    /// </summary>
+    /// <param name="builder">The proxy builder.</param>
+    /// <param name="mode">The routing mode (Unified or PerServer).</param>
+    /// <param name="basePath">The base path for per-server routes (only used when mode is PerServer).</param>
+    /// <returns>The builder for chaining.</returns>
+    public static IMcpProxyBuilder WithRouting(
+        this IMcpProxyBuilder builder,
+        RoutingMode mode,
+        string? basePath = null)
+    {
+        if (builder is McpProxyBuilder concreteBuilder)
+        {
+            return concreteBuilder.WithRouting(mode, basePath);
+        }
+
+        throw new NotSupportedException(
+            $"WithRouting is only supported on {nameof(McpProxyBuilder)}. " +
+            $"Custom IMcpProxyBuilder implementations should configure routing directly.");
     }
 
     /// <summary>

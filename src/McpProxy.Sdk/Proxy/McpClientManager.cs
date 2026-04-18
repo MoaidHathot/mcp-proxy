@@ -281,6 +281,9 @@ public sealed class McpClientManager : IAsyncDisposable
         // Register notification handlers for forwarding
         RegisterNotificationHandlers(client, name);
 
+        // Monitor for unexpected backend disconnection
+        MonitorClientCompletion(client, name);
+
         ProxyLogger.ConnectedToBackend(_logger, name);
 
         // Record connection state in health tracker
@@ -339,6 +342,37 @@ public sealed class McpClientManager : IAsyncDisposable
             _notificationForwarder.CreateNotificationHandler(serverName, McpNotificationMethods.ResourceUpdated));
 
         ProxyLogger.NotificationHandlersRegistered(_logger, serverName);
+    }
+
+    /// <summary>
+    /// Monitors a backend client for unexpected disconnection via its <see cref="McpClient.Completion"/> task.
+    /// When the backend session ends (e.g., process crash, network failure, graceful shutdown),
+    /// the health tracker is updated and a warning is logged. This runs as a fire-and-forget
+    /// continuation so it does not block the connection path.
+    /// </summary>
+    private void MonitorClientCompletion(McpClient client, string serverName)
+    {
+        _ = client.Completion.ContinueWith(completionTask =>
+        {
+            _healthTracker.RecordConnectionState(serverName, connected: false);
+
+            if (completionTask.IsCompletedSuccessfully)
+            {
+                var details = completionTask.Result;
+                if (details.Exception is not null)
+                {
+                    ProxyLogger.BackendDisconnectedUnexpectedly(_logger, serverName, details.Exception);
+                }
+                else
+                {
+                    ProxyLogger.BackendDisconnected(_logger, serverName);
+                }
+            }
+            else
+            {
+                ProxyLogger.BackendDisconnected(_logger, serverName);
+            }
+        }, TaskScheduler.Default);
     }
 
     /// <summary>

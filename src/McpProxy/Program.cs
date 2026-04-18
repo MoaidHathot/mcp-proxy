@@ -199,7 +199,14 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
     // Configure MCP Server with HTTP transport and all handlers
     builder.Services
         .AddMcpServer(options => ConfigureServerOptions(options, configuration))
-        .WithHttpTransport()
+        .WithHttpTransport(transport =>
+        {
+            // Enable legacy SSE endpoints (/sse and /message) for backward compatibility
+            // with MCP clients that use the older SSE transport protocol.
+#pragma warning disable MCP9004 // EnableLegacySse is obsolete but required for backward compatibility
+            transport.EnableLegacySse = true;
+#pragma warning restore MCP9004
+        })
         .WithProxyHandlers();
 
     var app = builder.Build();

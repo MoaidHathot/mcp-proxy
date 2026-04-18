@@ -279,8 +279,12 @@ public static class McpProxySdkHostExtensions
         // Initialize backend connections
         await clientManager.InitializeAsync(sdkConfig.Configuration, cancellationToken).ConfigureAwait(false);
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         // Probe backends with ForwardAuthorization for OAuth metadata support
         await ProbeOAuthBackendsAsync(host.Services, sdkConfig.Configuration, cancellationToken).ConfigureAwait(false);
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         // Configure hook pipelines from SDK configuration
         foreach (var (serverName, serverState) in sdkConfig.ServerStates)
