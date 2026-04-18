@@ -722,6 +722,47 @@ await app.Services.InitializeMcpProxyAsync();
 await app.RunAsync();
 ```
 
+### Per-Server Routing (SDK)
+
+To expose each backend on its own HTTP endpoint with isolated tools, use `MapPerServerMcpEndpoints()`:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddMcpProxy(proxy =>
+{
+    proxy.WithServerInfo("My Proxy", "1.0.0");
+
+    // Configure per-server routing
+    proxy.WithRouting(RoutingMode.PerServer, "/mcp");
+
+    proxy.AddHttpServer("calendar", "https://example.com/calendar-mcp")
+        .WithTitle("Calendar")
+        .Build();
+
+    proxy.AddHttpServer("mail", "https://example.com/mail-mcp")
+        .WithTitle("Mail")
+        .Build();
+});
+
+builder.Services.AddMcpServer().WithHttpTransport().WithSdkProxyHandlers();
+
+var app = builder.Build();
+await app.InitializeMcpProxyAsync();
+
+// Map unified endpoint (aggregates all tools)
+app.MapMcp("/mcp");
+
+// Map per-server endpoints (isolated tools per backend)
+app.MapPerServerMcpEndpoints();
+// Creates: /mcp/calendar/tools/list, /mcp/mail/tools/list, etc.
+
+await app.RunAsync();
+```
+
+Each per-server endpoint only returns tools, resources, and prompts from its own backend.
+The unified `/mcp` endpoint still aggregates everything.
+
 ### When to Use SDK vs JSON Configuration
 
 | Use Case | Recommended Approach |
@@ -751,6 +792,15 @@ await app.RunAsync();
 | `WithToolInterceptor(interceptor)` | Intercept and modify tool lists |
 | `WithToolCallInterceptor(interceptor)` | Intercept tool calls |
 | `WithConfigurationFile(path)` | Merge with JSON configuration |
+
+#### WebApplication Extension Methods
+
+| Method | Description |
+|--------|-------------|
+| `InitializeMcpProxyAsync()` | Initialize backend connections and hook pipelines |
+| `MapPerServerMcpEndpoints()` | Map per-server HTTP endpoints with isolated tools per backend |
+| `UseOAuthMetadataProxy()` | Add OAuth metadata proxy middleware |
+| `UseForwardAuthAuthentication()` | Add forward-authorization authentication middleware |
 
 #### IServerBuilder Methods
 

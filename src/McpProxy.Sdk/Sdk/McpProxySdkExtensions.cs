@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace McpProxy.Sdk.Sdk;
@@ -131,6 +132,31 @@ public static class McpProxySdkExtensions
         // Add OAuth metadata services
         services.AddSingleton<IOAuthMetadataRegistry, OAuthMetadataRegistry>();
         services.AddSingleton<IOAuthMetadataProbe, OAuthMetadataProbe>();
+
+        // Register SingleServerProxy instances for PerServer routing mode.
+        // Each enabled server gets a keyed singleton so that per-server endpoints
+        // resolve only the tools from their own backend.
+        services.AddSingleton<IPerServerProxyRegistrar>(sp =>
+        {
+            var config = sp.GetRequiredService<ProxyConfiguration>();
+            if (config.Proxy.Routing.Mode != RoutingMode.PerServer)
+            {
+                return new NoOpPerServerProxyRegistrar();
+            }
+
+            var logger = sp.GetRequiredService<ILogger<SingleServerProxy>>();
+            var clientManager = sp.GetRequiredService<McpClientManager>();
+            var httpContextAccessor = sp.GetService<IHttpContextAccessor>();
+            var proxies = new Dictionary<string, SingleServerProxy>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var (serverName, serverConfig) in config.Mcp.Where(m => m.Value.Enabled))
+            {
+                proxies[serverName] = new SingleServerProxy(
+                    logger, clientManager, serverName, serverConfig, httpContextAccessor);
+            }
+
+            return new PerServerProxyRegistrar(proxies);
+        });
 
         // Add telemetry
         services.AddSingleton(sp =>
@@ -295,6 +321,45 @@ public static class McpProxySdkHostExtensions
                 proxyServer.AddHookPipeline(serverName, pipeline);
             }
         }
+
+        // Configure hook pipelines for SingleServerProxy instances (PerServer routing mode)
+        var perServerRegistrar = host.Services.GetService<IPerServerProxyRegistrar>();
+        if (perServerRegistrar is { Proxies.Count: > 0 })
+        {
+            foreach (var (serverName, singleServerProxy) in perServerRegistrar.Proxies)
+            {
+                if (!sdkConfig.Configuration.Mcp.TryGetValue(serverName, out var serverConfig))
+                {
+                    continue;
+                }
+
+                // Check SDK hooks first, then JSON hooks
+                if (sdkConfig.ServerStates.TryGetValue(serverName, out var serverState) &&
+                    (serverState.PreInvokeHooks.Count > 0 || serverState.PostInvokeHooks.Count > 0))
+                {
+                    var pipeline = new HookPipeline(pipelineLogger);
+
+                    foreach (var hook in serverState.PreInvokeHooks)
+                    {
+                        pipeline.AddPreInvokeHook(hook);
+                    }
+
+                    foreach (var hook in serverState.PostInvokeHooks)
+                    {
+                        pipeline.AddPostInvokeHook(hook);
+                    }
+
+                    singleServerProxy.SetHookPipeline(pipeline);
+                }
+                else if (serverConfig.Hooks.PreInvoke is { Length: > 0 } ||
+                         serverConfig.Hooks.PostInvoke is { Length: > 0 })
+                {
+                    var pipeline = new HookPipeline(pipelineLogger);
+                    hookFactory.ConfigurePipeline(serverConfig.Hooks, pipeline);
+                    singleServerProxy.SetHookPipeline(pipeline);
+                }
+            }
+        }
     }
 
     private static async Task ProbeOAuthBackendsAsync(
@@ -447,5 +512,152 @@ public static class McpProxySdkHostExtensions
         throw new InvalidOperationException(
             $"WithBackendAuth is only supported on {nameof(ServerBuilder)}. " +
             $"Actual type: {builder.GetType().Name}");
+    }
+
+    /// <summary>
+    /// Maps per-server MCP endpoints for PerServer routing mode.
+    /// Each enabled backend server gets its own set of endpoints at
+    /// <c>{basePath}/{serverName}</c> (or the server's custom <c>route</c>).
+    /// Tools, resources, and prompts on each endpoint are isolated to that server's backend.
+    /// </summary>
+    /// <remarks>
+    /// This should be called after <see cref="McpProxySdkHostExtensions.InitializeMcpProxyAsync(WebApplication, CancellationToken)"/>
+    /// to ensure backend connections and hook pipelines are configured.
+    /// A unified MCP endpoint is still available at <c>{basePath}</c> which aggregates all servers.
+    /// </remarks>
+    /// <param name="app">The web application.</param>
+    /// <returns>The web application for chaining.</returns>
+    public static WebApplication MapPerServerMcpEndpoints(this WebApplication app)
+    {
+        var config = app.Services.GetRequiredService<ProxyConfiguration>();
+
+        if (config.Proxy.Routing.Mode != RoutingMode.PerServer)
+        {
+            return app;
+        }
+
+        var registrar = app.Services.GetRequiredService<IPerServerProxyRegistrar>();
+        var logger = app.Services.GetRequiredService<ILogger<SingleServerProxy>>();
+
+        foreach (var (serverName, _) in registrar.Proxies)
+        {
+            var serverConfig = config.Mcp[serverName];
+            var route = serverConfig.Route ?? $"{config.Proxy.Routing.BasePath}/{serverName}";
+
+            MapSingleServerEndpoint(app, serverName, route, registrar);
+            ProxyLogger.RegisteredServerEndpoint(logger, serverName, route);
+        }
+
+        return app;
+    }
+
+    private static void MapSingleServerEndpoint(
+        WebApplication app,
+        string serverName,
+        string route,
+        IPerServerProxyRegistrar registrar)
+    {
+        app.MapPost($"{route}/tools/list", async (HttpContext context) =>
+        {
+            var proxy = registrar.GetProxy(serverName);
+            var result = await proxy.ListToolsAsync(context.RequestAborted).ConfigureAwait(false);
+            return Results.Json(result);
+        });
+
+        app.MapPost($"{route}/tools/call", async (HttpContext context, CallToolRequestParams request) =>
+        {
+            var proxy = registrar.GetProxy(serverName);
+            var result = await proxy.CallToolAsync(request, context.RequestAborted).ConfigureAwait(false);
+            return Results.Json(result);
+        });
+
+        app.MapPost($"{route}/resources/list", async (HttpContext context) =>
+        {
+            var proxy = registrar.GetProxy(serverName);
+            var result = await proxy.ListResourcesAsync(context.RequestAborted).ConfigureAwait(false);
+            return Results.Json(result);
+        });
+
+        app.MapPost($"{route}/resources/read", async (HttpContext context, ReadResourceRequestParams request) =>
+        {
+            var proxy = registrar.GetProxy(serverName);
+            var result = await proxy.ReadResourceAsync(request, context.RequestAborted).ConfigureAwait(false);
+            return Results.Json(result);
+        });
+
+        app.MapPost($"{route}/prompts/list", async (HttpContext context) =>
+        {
+            var proxy = registrar.GetProxy(serverName);
+            var result = await proxy.ListPromptsAsync(context.RequestAborted).ConfigureAwait(false);
+            return Results.Json(result);
+        });
+
+        app.MapPost($"{route}/prompts/get", async (HttpContext context, GetPromptRequestParams request) =>
+        {
+            var proxy = registrar.GetProxy(serverName);
+            var result = await proxy.GetPromptAsync(request, context.RequestAborted).ConfigureAwait(false);
+            return Results.Json(result);
+        });
+    }
+}
+
+/// <summary>
+/// Registry for per-server proxy instances. Used internally by the SDK to manage
+/// <see cref="SingleServerProxy"/> instances for PerServer routing mode.
+/// </summary>
+public interface IPerServerProxyRegistrar
+{
+    /// <summary>
+    /// Gets all registered per-server proxies.
+    /// </summary>
+    IReadOnlyDictionary<string, SingleServerProxy> Proxies { get; }
+
+    /// <summary>
+    /// Gets a per-server proxy by server name.
+    /// </summary>
+    /// <param name="serverName">The server name.</param>
+    /// <returns>The proxy for the specified server.</returns>
+    /// <exception cref="KeyNotFoundException">Thrown if no proxy is registered for the server name.</exception>
+    SingleServerProxy GetProxy(string serverName);
+}
+
+/// <summary>
+/// Holds the registered <see cref="SingleServerProxy"/> instances for PerServer routing mode.
+/// </summary>
+internal sealed class PerServerProxyRegistrar : IPerServerProxyRegistrar
+{
+    private readonly Dictionary<string, SingleServerProxy> _proxies;
+
+    public PerServerProxyRegistrar(Dictionary<string, SingleServerProxy> proxies)
+    {
+        _proxies = proxies;
+    }
+
+    public IReadOnlyDictionary<string, SingleServerProxy> Proxies => _proxies;
+
+    public SingleServerProxy GetProxy(string serverName)
+    {
+        if (_proxies.TryGetValue(serverName, out var proxy))
+        {
+            return proxy;
+        }
+
+        throw new KeyNotFoundException($"No per-server proxy registered for server '{serverName}'. " +
+            $"Available servers: {string.Join(", ", _proxies.Keys)}");
+    }
+}
+
+/// <summary>
+/// No-op registrar used when PerServer routing mode is not active.
+/// </summary>
+internal sealed class NoOpPerServerProxyRegistrar : IPerServerProxyRegistrar
+{
+    public IReadOnlyDictionary<string, SingleServerProxy> Proxies { get; } =
+        new Dictionary<string, SingleServerProxy>();
+
+    public SingleServerProxy GetProxy(string serverName)
+    {
+        throw new InvalidOperationException(
+            "Per-server routing is not enabled. Set routing.mode to 'perServer' in the proxy configuration.");
     }
 }

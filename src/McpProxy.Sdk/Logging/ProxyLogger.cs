@@ -32,7 +32,7 @@ public static partial class ProxyLogger
     [LoggerMessage(Level = LogLevel.Information, Message = "Connected to backend server '{ServerName}'")]
     public static partial void ConnectedToBackend(ILogger logger, string serverName);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Backend server '{ServerName}' uses ForwardAuthorization; connection deferred until first request")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Backend server '{ServerName}' connection deferred until first request")]
     public static partial void BackendConnectionDeferred(ILogger logger, string serverName);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Failed to connect to backend server '{ServerName}'")]
