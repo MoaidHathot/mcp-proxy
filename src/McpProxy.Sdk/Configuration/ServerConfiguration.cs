@@ -105,6 +105,13 @@ public sealed class ServerConfiguration
     /// Used for HTTP/SSE backends that require Azure AD or other OAuth authentication.
     /// </summary>
     public BackendAuthConfiguration? Auth { get; set; }
+
+    /// <summary>
+    /// Gets or sets a per-server CORS override. When set, this policy is applied
+    /// to this server's MCP route instead of the global <see cref="ProxySettings.Cors"/>.
+    /// Only honoured when running in PerServer routing mode.
+    /// </summary>
+    public CorsConfiguration? Cors { get; set; }
 }
 
 /// <summary>

@@ -63,6 +63,84 @@ public sealed class ProxySettings
     /// Gets or sets the debug configuration.
     /// </summary>
     public DebugConfiguration Debug { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the global CORS configuration. Applied as the default policy
+    /// to all MCP routes; individual servers may override via their own
+    /// <see cref="ServerConfiguration.Cors"/> property.
+    /// </summary>
+    public CorsConfiguration Cors { get; set; } = new();
+}
+
+/// <summary>
+/// Cross-Origin Resource Sharing (CORS) configuration for MCP HTTP endpoints.
+/// </summary>
+/// <remarks>
+/// When <see cref="Enabled"/> is <c>true</c>, ASP.NET Core CORS middleware is
+/// registered and applied to MCP routes. The <c>Mcp-Session-Id</c> header is
+/// automatically appended to <see cref="ExposedHeaders"/> so browser-based MCP
+/// clients can read the session id returned by the initialize response.
+/// </remarks>
+public sealed class CorsConfiguration
+{
+    /// <summary>
+    /// Gets or sets whether CORS is enabled. When <c>false</c>, no CORS headers
+    /// are emitted and preflight (OPTIONS) requests are not handled.
+    /// </summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>
+    /// Gets or sets the allowed origins. Use <c>["*"]</c> to allow any origin
+    /// (incompatible with <see cref="AllowCredentials"/>). When <c>null</c> or
+    /// empty, no origins are allowed.
+    /// <para>
+    /// Entries may include <c>*</c> as a glob wildcard for any character
+    /// sequence within a single URI segment, e.g. <c>http://localhost:*</c>
+    /// or <c>https://*.example.com</c>. When any entry contains a wildcard
+    /// (other than the special <c>"*"</c> allow-all value), origin matching
+    /// is performed via a predicate rather than exact string comparison.
+    /// </para>
+    /// </summary>
+    public string[]? AllowedOrigins { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to allow any localhost origin on any port over
+    /// either HTTP or HTTPS. When <c>true</c>, requests from <c>localhost</c>
+    /// or <c>127.0.0.1</c> on any port are accepted in addition to anything
+    /// listed in <see cref="AllowedOrigins"/>. Convenient for local
+    /// development tools (e.g., MCP Inspector) that bind to ephemeral ports.
+    /// </summary>
+    public bool AllowAnyLocalhost { get; set; }
+
+    /// <summary>
+    /// Gets or sets the allowed HTTP methods. When <c>null</c> or empty, any
+    /// method is allowed.
+    /// </summary>
+    public string[]? AllowedMethods { get; set; }
+
+    /// <summary>
+    /// Gets or sets the allowed request headers. When <c>null</c> or empty, any
+    /// header is allowed.
+    /// </summary>
+    public string[]? AllowedHeaders { get; set; }
+
+    /// <summary>
+    /// Gets or sets the response headers exposed to browser scripts. The
+    /// <c>Mcp-Session-Id</c> header is always exposed, regardless of this list.
+    /// </summary>
+    public string[]? ExposedHeaders { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether credentials (cookies, authorization headers) are
+    /// allowed. Cannot be combined with wildcard origins.
+    /// </summary>
+    public bool AllowCredentials { get; set; }
+
+    /// <summary>
+    /// Gets or sets the max age (in seconds) browsers may cache preflight
+    /// responses. <c>null</c> uses the browser default.
+    /// </summary>
+    public int? PreflightMaxAgeSeconds { get; set; }
 }
 
 /// <summary>

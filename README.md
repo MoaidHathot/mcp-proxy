@@ -144,7 +144,8 @@ The configuration file is JSON with support for comments and trailing commas. En
     "routing": { ... },
     "authentication": { ... },
     "logging": { ... },
-    "caching": { ... }
+    "caching": { ... },
+    "cors": { ... }
   },
   "mcp": {
     "server-name": { ... }
@@ -191,6 +192,65 @@ The configuration file is JSON with support for comments and trailing commas. En
 | `proxy.logging.logRequests` | bool | `true` | Log incoming requests |
 | `proxy.logging.logResponses` | bool | `false` | Log outgoing responses |
 | `proxy.logging.sensitiveDataMask` | bool | `true` | Mask sensitive data in logs |
+
+### CORS Settings
+
+CORS is required when browser-based MCP clients (such as **MCP Inspector**) connect to
+the HTTP transport. Without it, browsers block the preflight (`OPTIONS`) request and the
+connection fails before any MCP traffic is exchanged.
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `proxy.cors.enabled` | bool | `false` | Enable CORS middleware on all MCP routes |
+| `proxy.cors.allowedOrigins` | string[] | `null` | Origins permitted to call the proxy. Use `["*"]` to allow any origin (incompatible with `allowCredentials`). Entries may contain glob `*` wildcards within a single URI segment, e.g. `"http://localhost:*"` or `"https://*.example.com"` |
+| `proxy.cors.allowAnyLocalhost` | bool | `false` | Shortcut: allow any `http`/`https` origin on `localhost`, `127.0.0.1`, or `[::1]` for any port. Useful for local browser tools (MCP Inspector) that bind to ephemeral ports without enumerating each one |
+| `proxy.cors.allowedMethods` | string[] | `null` (any) | Allowed HTTP methods. The MCP spec uses `GET`, `POST`, `DELETE`, `OPTIONS` |
+| `proxy.cors.allowedHeaders` | string[] | `null` (any) | Allowed request headers |
+| `proxy.cors.exposedHeaders` | string[] | `[]` | Response headers exposed to browser scripts. `Mcp-Session-Id` is always exposed |
+| `proxy.cors.allowCredentials` | bool | `false` | Allow cookies / `Authorization` header. Cannot combine with the `["*"]` wildcard, but works with `allowAnyLocalhost` and glob patterns (the matched origin is reflected) |
+| `proxy.cors.preflightMaxAgeSeconds` | int? | `null` | Cache duration browsers may use for preflight responses |
+
+#### Per-server overrides
+
+In `perServer` routing mode, an individual backend may declare its own CORS policy via
+`mcp.<name>.cors`. The override has the same shape as `proxy.cors` and **completely
+replaces** the global policy on that server's route — there is no merging of allowed
+origins.
+
+```json
+{
+  "proxy": {
+    "routing": { "mode": "perServer", "basePath": "/mcp" },
+    "cors": {
+      "enabled": true,
+      "allowedOrigins": ["https://internal.example"]
+    }
+  },
+  "mcp": {
+    "calendar": {
+      "type": "http",
+      "url": "https://calendar.example/mcp",
+      "cors": {
+        "enabled": true,
+        "allowedOrigins": ["https://app.example"]
+      }
+    }
+  }
+}
+```
+
+#### SDK usage
+
+When embedding the SDK in your own ASP.NET Core host, register and apply CORS the same way:
+
+```csharp
+builder.Services.AddMcpProxyCors(proxyConfiguration);
+// ...
+var app = builder.Build();
+app.UseMcpProxyCors();          // applies the default policy + sets up per-server policies
+app.MapMcp("/mcp/calendar")
+   .ApplyServerCorsPolicy(proxyConfiguration, "calendar"); // attach per-server policy
+```
 
 ### Server Configuration
 

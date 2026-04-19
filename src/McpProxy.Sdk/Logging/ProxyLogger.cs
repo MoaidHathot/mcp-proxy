@@ -489,4 +489,15 @@ public static partial class ProxyLogger
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Backend server '{ServerName}' disconnected unexpectedly")]
     public static partial void BackendDisconnectedUnexpectedly(ILogger logger, string serverName, Exception exception);
+
+    // === CORS ===
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "CORS enabled with default policy (origins: {AllowedOrigins})")]
+    public static partial void CorsEnabled(ILogger logger, string allowedOrigins);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "CORS override registered for server '{ServerName}' (policy: '{PolicyName}', origins: {AllowedOrigins})")]
+    public static partial void CorsServerOverrideRegistered(ILogger logger, string serverName, string policyName, string allowedOrigins);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "CORS configuration for {Scope} is enabled but no AllowedOrigins are specified; no origins will be permitted")]
+    public static partial void CorsNoOriginsConfigured(ILogger logger, string scope);
 }

@@ -637,7 +637,8 @@ public static class McpProxySdkHostExtensions
             // route via IPerServerProxyRegistrar.TryGetProxyForRoute() and delegate
             // to SingleServerProxy instead of SdkEnabledProxyServer, providing
             // per-server tool/resource/prompt isolation over the MCP protocol.
-            app.MapMcp(route);
+            app.MapMcp(route)
+                .ApplyServerCorsPolicy(config, serverName);
 
             // Also map REST sub-routes for backward compatibility
             MapSingleServerEndpoint(app, serverName, route, registrar);

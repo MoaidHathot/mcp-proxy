@@ -35,6 +35,28 @@
       "logRequests": true,
       "logResponses": false,
       "sensitiveDataMask": true
+    },
+    // Cross-Origin Resource Sharing (CORS) for HTTP transport.
+    // Required when browser-based MCP clients (e.g., MCP Inspector) connect to the proxy.
+    // Each backend may override this with its own "cors" block (see "context7" below).
+    "cors": {
+      "enabled": false,
+      // Use ["*"] to allow any origin (incompatible with allowCredentials).
+      // Entries support glob '*' wildcards within a single URI segment, e.g.
+      //   "http://localhost:*"        -> any localhost port
+      //   "https://*.example.com"     -> any single-label subdomain of example.com
+      "allowedOrigins": ["http://localhost:6274", "https://*.inspector.example"],
+      // Shortcut: allow any http(s)://localhost or 127.0.0.1 on any port.
+      // Handy for local browser tools (MCP Inspector) that bind to ephemeral ports.
+      "allowAnyLocalhost": false,
+      // Omit (or null) to allow any method; the MCP spec uses GET, POST, DELETE, OPTIONS
+      "allowedMethods": ["GET", "POST", "DELETE", "OPTIONS"],
+      // Omit to allow any header; common ones include Content-Type, Authorization, Mcp-Session-Id
+      "allowedHeaders": ["Content-Type", "Authorization", "Mcp-Session-Id"],
+      // Mcp-Session-Id is always exposed automatically; list any extras here.
+      "exposedHeaders": [],
+      "allowCredentials": false,
+      "preflightMaxAgeSeconds": 600
     }
   },
 
@@ -85,6 +107,13 @@
       "url": "https://mcp.context7.com/sse",
       "tools": {
         "prefix": "c7"
+      },
+      // Per-server CORS override. Wins over proxy.cors when in PerServer routing mode.
+      // Useful when one server should be reachable from a different set of origins.
+      "cors": {
+        "enabled": true,
+        "allowedOrigins": ["https://docs.example.com"],
+        "allowedMethods": ["GET", "POST", "OPTIONS"]
       }
     },
 

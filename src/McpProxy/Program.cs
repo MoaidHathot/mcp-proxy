@@ -187,6 +187,10 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
     // Required for TryGetPerServerProxy to resolve per-server routes via HttpContext.Request.Path
     builder.Services.AddHttpContextAccessor();
 
+    // Register CORS policies (global default + per-server overrides) before
+    // building the application. No-op if CORS is disabled everywhere.
+    builder.Services.AddMcpProxyCors(configuration);
+
     // Register SingleServerProxy instances for PerServer mode.
     // A single IPerServerProxyRegistrar holds all instances, shared by both MCP Streamable HTTP
     // handlers and REST sub-routes, ensuring hooks and configuration are applied consistently.
@@ -231,6 +235,11 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
 
     var app = builder.Build();
 
+    // Apply CORS middleware as early as possible so preflight (OPTIONS) requests
+    // succeed before any authentication/routing logic runs. No-op if CORS is
+    // disabled in configuration.
+    app.UseMcpProxyCors();
+
     // Initialize backend connections and configure hooks
     var clientManager = app.Services.GetRequiredService<McpClientManager>();
     var proxyClientHandlers = app.Services.GetRequiredService<ProxyClientHandlers>();
@@ -266,16 +275,18 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
 
         // PerServer mode: Each server gets its own endpoint
         // Map to base path for unified endpoint (still available for discovery)
-        app.MapMcp(configuration.Proxy.Routing.BasePath);
-        
+        app.MapMcp(configuration.Proxy.Routing.BasePath)
+            .ApplyServerCorsPolicy(configuration, serverName: null);
+
         // Map individual server endpoints
         foreach (var (serverName, serverConfig) in configuration.Mcp.Where(m => m.Value.Enabled))
         {
             var route = serverConfig.Route ?? $"{configuration.Proxy.Routing.BasePath}/{serverName}";
-            
+
             // Map MCP Streamable HTTP endpoint for this server (MCP protocol clients)
-            app.MapMcp(route);
-            
+            app.MapMcp(route)
+                .ApplyServerCorsPolicy(configuration, serverName);
+
             // Map REST sub-routes for backward compatibility
             MapSingleServerEndpoint(app, serverName, route, registrar);
             ProxyLogger.RegisteredServerEndpoint(logger, serverName, route);
@@ -284,7 +295,8 @@ async Task RunHttpServerAsync(ProxyConfiguration configuration, int port, bool v
     else
     {
         // Unified mode: All servers on one endpoint
-        app.MapMcp(configuration.Proxy.Routing.BasePath);
+        app.MapMcp(configuration.Proxy.Routing.BasePath)
+            .ApplyServerCorsPolicy(configuration, serverName: null);
     }
 
     // Map OAuth metadata discovery endpoints (RFC 8414) for MCP authentication
