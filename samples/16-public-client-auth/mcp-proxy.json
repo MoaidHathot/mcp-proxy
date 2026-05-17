@@ -85,7 +85,7 @@
       "description": "Teams MCP with caching, hooks, virtual tools, and credential scanning (provided by sample 15)",
       "command": "dnx",
       "arguments": [
-        "McpProxy.Samples.Teams.Mcp@1.18.0",
+        "McpProxy.Samples.Teams.Mcp",
         "--yes",
         "--",
         "--auth-mode=user-auth",
