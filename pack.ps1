@@ -15,6 +15,7 @@ $projects = @(
     "src/McpProxy.Sdk/McpProxy.Sdk.csproj",
     "src/McpProxy/McpProxy.csproj"
     "src/McpProxy.Abstractions/McpProxy.Abstractions.csproj"
+    "samples/15-teams-integration/TeamsIntegration.csproj"
 )
 
 foreach ($projectPath in $projects) {

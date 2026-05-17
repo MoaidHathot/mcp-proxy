@@ -6,10 +6,34 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>McpProxy.Samples.TeamsIntegration</RootNamespace>
+
+    <!-- NuGet Package Configuration -->
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>teams-mcp</ToolCommandName>
+    <PackageId>McpProxy.Samples.Teams.Mcp</PackageId>
+    <Company>Moaid Hathot</Company>
+    <Description>Sample MCP Proxy with Microsoft Teams integration (cache, hooks, virtual tools, credential scanning). Usable standalone or as a backend of another mcp-proxy via dnx.</Description>
+    <PackageTags>mcp;model-context-protocol;proxy;teams;m365;sample</PackageTags>
+    <PackageProjectUrl>https://github.com/MoaidHathot/mcp-proxy</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MoaidHathot/mcp-proxy</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Copyright>Copyright (c) 2025 Moaid Hathot</Copyright>
+    <PackageReleaseNotes>Sample showing how to compose the Teams Integration with another mcp-proxy (e.g. sample 16) via dnx.</PackageReleaseNotes>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+
+    <!-- Sample code: do not require XML doc comments on every public type. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\McpProxy.Sdk\McpProxy.Sdk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

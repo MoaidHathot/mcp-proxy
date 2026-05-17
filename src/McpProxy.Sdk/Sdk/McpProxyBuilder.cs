@@ -434,6 +434,21 @@ internal sealed class ServerBuilder : IServerBuilder
         return this;
     }
 
+    /// <summary>
+    /// Configures whether the backend connection should be deferred until the first
+    /// client request. When <c>true</c>, the proxy does not connect to this backend at
+    /// startup; instead it connects lazily on the first request. Useful for avoiding
+    /// interactive authentication prompts at proxy startup.
+    /// </summary>
+    /// <param name="deferConnection">Whether to defer the connection.</param>
+    /// <returns>The builder for chaining.</returns>
+    public IServerBuilder WithDeferConnection(bool deferConnection = true)
+    {
+        _state.Configuration.Auth ??= new BackendAuthConfiguration();
+        _state.Configuration.Auth.DeferConnection = deferConnection;
+        return this;
+    }
+
     /// <inheritdoc />
     public IServerBuilder AddVirtualTool(
         Tool tool,

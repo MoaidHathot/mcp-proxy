@@ -80,6 +80,20 @@ var logToken = args.Contains("--log-token", StringComparer.OrdinalIgnoreCase)
 
 var loginOnly = args.Contains("--login", StringComparer.OrdinalIgnoreCase);
 
+// Persistent token-cache name used by InteractiveBrowserCredential. Default keeps the
+// existing standalone behavior. When sample 15 is hosted as a backend of another
+// mcp-proxy (e.g. sample 16), align this with the parent proxy's cache name
+// ("mcp-proxy" is sample 16's default) so a single browser sign-in covers all backends.
+var tokenCacheName = Environment.GetEnvironmentVariable("AZURE_TOKEN_CACHE_NAME")
+    ?? GetArg(args, "--token-cache-name")
+    ?? "mcp-proxy-teams";
+
+// Whether to defer the outbound Teams backend connection until the first client tool
+// call. Useful when this sample is hosted as a stdio child of another mcp-proxy so the
+// browser sign-in is not triggered at parent-proxy startup.
+var deferConnection = args.Contains("--defer-connection", StringComparer.OrdinalIgnoreCase)
+    || string.Equals(Environment.GetEnvironmentVariable("DEFER_CONNECTION"), "true", StringComparison.OrdinalIgnoreCase);
+
 // Validate auth mode
 var authModeType = authMode switch
 {
@@ -266,6 +280,8 @@ async Task RunUserAuthModeAsync(string tenantId, string publicClientId, string[]
     Console.Error.WriteLine();
     Console.Error.WriteLine($"Tenant ID:         {tenantId}");
     Console.Error.WriteLine($"Public Client ID:  {publicClientId}");
+    Console.Error.WriteLine($"Token cache name:  {tokenCacheName}");
+    Console.Error.WriteLine($"Defer connection:  {(deferConnection ? "yes (lazy)" : "no (eager)")}");
     Console.Error.WriteLine();
 
     // ── Step 1: Discover scopes from RFC 9728 metadata if not provided ──
@@ -310,7 +326,7 @@ async Task RunUserAuthModeAsync(string tenantId, string publicClientId, string[]
             TenantId = tenantId,
             TokenCachePersistenceOptions = new TokenCachePersistenceOptions
             {
-                Name = "mcp-proxy-teams"
+                Name = tokenCacheName
             },
             RedirectUri = new Uri("http://localhost")
         });
@@ -369,8 +385,9 @@ async Task RunUserAuthModeAsync(string tenantId, string publicClientId, string[]
                 azureAd.ClientId = publicClientId;
                 azureAd.TenantId = tenantId;
                 azureAd.Scopes = scopes;
-                azureAd.TokenCacheName = "mcp-proxy-teams";
+                azureAd.TokenCacheName = tokenCacheName;
             })
+            .WithDeferConnection(deferConnection)
             .Build();
 
         AddStatusTool(proxy, tenantId, "stdio (user-auth)", "User-delegated (interactive browser)");

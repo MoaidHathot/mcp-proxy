@@ -7,9 +7,9 @@ No app registration is needed. One browser sign-in covers all backends.
 ## Architecture
 
 ```
-                                                    ┌──────────────────────┐
-                                              ┌────>│ Calendar MCP Server  │
-                                              │     └──────────────────────┘
+                                                     ┌──────────────────────┐
+                                               ┌────>│ Calendar MCP Server  │
+                                               │     └──────────────────────┘
 ┌─────────────────┐     ┌────────────────┐    │     ┌──────────────────────┐
 │   MCP Client    │────>│   MCP Proxy    │────┼────>│ M365 Copilot MCP     │
 │                 │     │                │    │     └──────────────────────┘
@@ -17,13 +17,20 @@ No app registration is needed. One browser sign-in covers all backends.
 │  Claude, etc.)  │     │ /copilot       │    ├────>│ Mail MCP Server      │
 └─────────────────┘     │ /mail          │    │     └──────────────────────┘
                         │ /me            │    │     ┌──────────────────────┐
-                        └────────────────┘    └────>│ Me MCP Server        │
-                          │                         └──────────────────────┘
-                          │
-                    InteractiveBrowser
-                    auth (shared token
-                    cache, one sign-in)
+                        │ /teams         │    ├────>│ Me MCP Server        │
+                        └────────────────┘    │     └──────────────────────┘
+                          │                   │     ┌──────────────────────┐
+                          │                   └────>│ Teams (sample 15)    │
+                          │                         │ - cache              │
+                    InteractiveBrowser              │ - hooks              │
+                    auth (shared token              │ - virtual tools      │
+                    cache, one sign-in)             │ - credential scan    │
+                                                    └──────────────────────┘
+                                                       (spawned via `dnx`,
+                                                        stdio child process)
 ```
+
+The four HTTP backends (Calendar / Copilot / Mail / Me) use `InteractiveBrowser` directly. The Teams backend is provided by [sample 15](../15-teams-integration) running as a stdio child process via `dnx`. Sample 15 itself uses `InteractiveBrowser` outbound to the Teams MCP Server and adds caching, hooks, virtual tools, and credential scanning. All five backends share a single persistent token cache, so one browser sign-in covers them all.
 
 ## Prerequisites
 
@@ -89,6 +96,7 @@ Endpoints:
 | `http://localhost:5200/mcp/copilot` | Microsoft 365 Copilot |
 | `http://localhost:5200/mcp/mail` | Microsoft 365 Mail |
 | `http://localhost:5200/mcp/me` | Microsoft 365 Me / Profile |
+| `http://localhost:5200/mcp/teams` | Microsoft 365 Teams (sample 15, with cache/hooks/virtual tools) |
 | `http://localhost:5200/mcp/` | Discovery (lists all servers) |
 
 Endpoints follow the pattern `{basePath}/{serverName}`. The `basePath` defaults to `/mcp`
@@ -348,6 +356,36 @@ All four backends share the same:
 - Audience/scopes (`AZURE_AUDIENCE/.default`)
 - Persistent token cache (default name: `mcp-proxy`)
 
+## Teams Backend via Sample 15
+
+This sample pre-wires a 5th backend named `teams` that is **not** an HTTP backend like the other four — it is a stdio child process spawned from [sample 15](../15-teams-integration). Sample 15 itself uses `InteractiveBrowser` outbound to the Teams MCP Server and adds caching, hooks, virtual tools, and credential scanning. From this sample's point of view it is just another stdio backend; the cache/hooks/virtual tools are entirely an implementation detail of sample 15.
+
+### Prerequisites
+
+The `teams-mcp` tool must be installable via `dnx`. Either:
+
+- **From nuget.org** (once published) — `dnx` resolves `McpProxy.Samples.Teams.Mcp@1.18.0` automatically.
+- **Local build** — run `./pack.ps1` from the repo root to produce `artifacts/McpProxy.Samples.Teams.Mcp.<version>.nupkg`, then add the local feed when launching:
+
+  ```bash
+  dnx --add-source ./artifacts McpProxy.Samples.Teams.Mcp@1.18.0 --yes -- --help
+  ```
+
+  (or invoke `mcpproxy` with `DOTNET_ADD_NUGET_SOURCE` configured so the child `dnx` resolves locally — both are supported by `dnx`).
+
+### How it shares the browser sign-in
+
+Sample 16 already passes `--token-cache-name=mcp-proxy` and `AZURE_SCOPES=${AZURE_AUDIENCE}/.default` to sample 15. Together with the matching `${PUBLIC_CLIENT_ID}` and `${TENANT_ID}`, this aligns:
+
+- The MSAL persistent cache name (so the cached refresh token is reused)
+- The Azure AD app / tenant / audience (so a token minted for one backend is reusable for the others, or at minimum a new access token can be acquired silently from the shared refresh token)
+
+The first `teams_*` invocation triggers a browser sign-in. After that, both sample 16's HTTP backends and sample 15's outbound Teams calls reuse the cached token, and across restarts the refresh token in the OS credential store yields silent sign-in for ~90 days.
+
+### Disabling the Teams backend
+
+If you do not need Teams, set `enabled: false` on the `teams` entry in `mcp-proxy.json` — or remove it entirely. The other four backends keep working unchanged.
+
 ## Adding More Servers
 
 To add another Microsoft 365 MCP server, copy any server block and change the `url`.
@@ -383,6 +421,8 @@ different group (or no group) get their own independent credentials.
 | `TENANT_ID` | Yes | Azure AD tenant ID |
 | `PUBLIC_CLIENT_ID` | Yes | Pre-authorized public client app ID (discover via sample 15's `--log-token`) |
 | `AZURE_AUDIENCE` | Yes | Resource audience / app ID of the M365 MCP service (discover via `--log-token`) |
+
+The `teams` backend (provided by sample 15 via `dnx`) inherits these three environment variables automatically and converts them into its own CLI flags via the `mcp-proxy.json` `arguments` array. See [sample 15's README](../15-teams-integration/README.md#use-as-a-backend-of-another-mcp-proxy) for the full list of flags sample 15 accepts when used as a backend.
 
 ## Auth Configuration Reference
 

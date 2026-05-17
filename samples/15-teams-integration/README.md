@@ -334,6 +334,58 @@ Then run with the standard CLI:
 mcpproxy -t stdio -c mcp-proxy.json
 ```
 
+## Use as a Backend of Another mcp-proxy
+
+When packaged as a .NET tool (see [`TeamsIntegration.csproj`](./TeamsIntegration.csproj)), sample 15 can be consumed by another `mcp-proxy` instance as a plain stdio backend — exposing all its caching, hooks, virtual tools, and credential scanning to the parent proxy without the parent needing any custom code.
+
+[Sample 16](../16-public-client-auth) demonstrates this pattern: it aggregates four Microsoft 365 `InteractiveBrowser` HTTP backends plus this sample (Teams) as a stdio backend, so a single browser sign-in covers all five backends.
+
+### Tool package
+
+| Field | Value |
+|-------|-------|
+| Package id | `McpProxy.Samples.Teams.Mcp` |
+| Tool command | `teams-mcp` |
+| Versions | Tracks the repo `Version` in `Directory.Build.props` (currently `1.18.0`) |
+
+Pack locally with `./pack.ps1` (produces `artifacts/McpProxy.Samples.Teams.Mcp.<version>.nupkg`) and install via `dnx --add-source ./artifacts McpProxy.Samples.Teams.Mcp@<version> --yes -- --help`.
+
+### Parent proxy configuration (mcp-proxy.json snippet)
+
+```json
+"teams": {
+  "type": "stdio",
+  "title": "Microsoft 365 Teams",
+  "description": "Teams MCP with caching, hooks, virtual tools, and credential scanning",
+  "command": "dnx",
+  "arguments": [
+    "McpProxy.Samples.Teams.Mcp@1.18.0",
+    "--yes",
+    "--",
+    "--auth-mode=user-auth",
+    "--tenant-id=${TENANT_ID}",
+    "--public-client-id=${PUBLIC_CLIENT_ID}",
+    "--token-cache-name=mcp-proxy",
+    "--defer-connection"
+  ],
+  "environment": {
+    "AZURE_SCOPES": "${AZURE_AUDIENCE}/.default"
+  },
+  "enabled": true
+}
+```
+
+### Flags relevant to chained usage
+
+| Flag / env var | Purpose |
+|----------------|---------|
+| `--auth-mode=user-auth` / `AUTH_MODE` | Required: stdio transport with `InteractiveBrowser` outbound auth |
+| `--token-cache-name <name>` / `AZURE_TOKEN_CACHE_NAME` | Persistent token-cache name used by `InteractiveBrowserCredential`. Set this to match the parent proxy's cache name (sample 16 defaults to `mcp-proxy`) so the cached refresh token is shared and only one browser sign-in is needed across all backends. Default when not set: `mcp-proxy-teams` (the original standalone value). |
+| `--defer-connection` / `DEFER_CONNECTION=true` | Delays the outbound Teams MCP connection until the first tool call from the parent proxy. Without this, sample 15 connects eagerly at child-process startup and may trigger a browser prompt before the user actually invokes a Teams tool. |
+| `AZURE_SCOPES` | Pass the same audience the parent proxy uses (e.g. `${AZURE_AUDIENCE}/.default`) so the cached access token is reused across backends. |
+
+See sample 16's [README](../16-public-client-auth/README.md) for the full end-to-end configuration.
+
 ## Environment Variables
 
 | Variable | Required | Mode | Description |
@@ -346,6 +398,8 @@ mcpproxy -t stdio -c mcp-proxy.json
 | `AZURE_CLIENT_ID` | Yes | proxy-auth | App registration client ID |
 | `AZURE_CLIENT_SECRET` | Yes | proxy-auth | App registration client secret |
 | `AZURE_SCOPES` | No | proxy-auth, user-auth | Comma-separated scopes (auto-discovered from RFC 9728 metadata in user-auth mode) |
+| `AZURE_TOKEN_CACHE_NAME` | No | user-auth | Persistent token-cache name (default `mcp-proxy-teams`). Override to match a parent proxy's cache name (e.g. `mcp-proxy`) when used as a backend of another mcp-proxy. |
+| `DEFER_CONNECTION` | No | user-auth | When `true`, defers the outbound Teams MCP connection until the first tool call. Equivalent to `--defer-connection`. |
 
 ## Configuration Options
 
@@ -515,5 +569,6 @@ Pre-check message for credentials.
 ## See Also
 
 - [SKILL.md](./SKILL.md) - LLM guidance for using the Teams integration
+- [Sample 16: Public Client Auth](../16-public-client-auth/) - Aggregates multiple M365 backends and consumes this sample as a stdio backend via `dnx`
 - [Sample 13: SDK Virtual Tools](../13-sdk-virtual-tools/) - Virtual tools example
 - [Sample 06: Hooks](../06-hooks/) - Hooks configuration example

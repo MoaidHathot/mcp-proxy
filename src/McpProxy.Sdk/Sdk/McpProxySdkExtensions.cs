@@ -603,6 +603,35 @@ public static class McpProxySdkHostExtensions
     }
 
     /// <summary>
+    /// Configures whether the backend connection should be deferred until the first
+    /// client request. When <c>true</c>, the proxy does not connect to this backend at
+    /// startup; instead, it connects lazily on the first request. This avoids triggering
+    /// interactive authentication (e.g. an InteractiveBrowser sign-in) at startup.
+    /// </summary>
+    /// <remarks>
+    /// This sets <see cref="BackendAuthConfiguration.DeferConnection"/> on the server's
+    /// auth configuration. <see cref="WithBackendAuth(IServerBuilder, BackendAuthType)"/>
+    /// or its overload should be called first so that the auth configuration exists; if
+    /// not, this method initializes a default <see cref="BackendAuthConfiguration"/>.
+    /// </remarks>
+    /// <param name="builder">The server builder.</param>
+    /// <param name="deferConnection">Whether to defer connection to the backend.</param>
+    /// <returns>The builder for chaining.</returns>
+    public static IServerBuilder WithDeferConnection(
+        this IServerBuilder builder,
+        bool deferConnection = true)
+    {
+        if (builder is ServerBuilder serverBuilder)
+        {
+            return serverBuilder.WithDeferConnection(deferConnection);
+        }
+
+        throw new InvalidOperationException(
+            $"WithDeferConnection is only supported on {nameof(ServerBuilder)}. " +
+            $"Actual type: {builder.GetType().Name}");
+    }
+
+    /// <summary>
     /// Maps per-server MCP endpoints for PerServer routing mode.
     /// Each enabled backend server gets its own set of endpoints at
     /// <c>{basePath}/{serverName}</c> (or the server's custom <c>route</c>).
