@@ -265,6 +265,43 @@ public class McpClientManagerTests : IAsyncDisposable
             // Assert
             manager.Clients.Should().BeEmpty();
         }
+
+        [Fact]
+        public async Task Disposes_Clients_In_Parallel()
+        {
+            // Arrange - Use a barrier so each client's DisposeAsync only completes
+            // once all clients have entered DisposeAsync. If disposal were serial,
+            // the first client would block forever waiting for the others to
+            // arrive at the barrier and the test would time out.
+            const int clientCount = 4;
+            await using var manager = CreateManager();
+            using var barrier = new Barrier(clientCount);
+
+            for (var i = 0; i < clientCount; i++)
+            {
+                var client = Substitute.For<IMcpClientWrapper>();
+                client.DisposeAsync().Returns(_ =>
+                {
+                    // Signal arrival and wait for all clients to reach this point.
+                    // Use a generous timeout so the test fails fast if disposal is serial.
+                    if (!barrier.SignalAndWait(TimeSpan.FromSeconds(5)))
+                    {
+                        throw new TimeoutException(
+                            "DisposeAsync did not run in parallel — barrier timed out.");
+                    }
+                    return ValueTask.CompletedTask;
+                });
+                manager.RegisterClient($"s{i}", client, CreateStdioConfig());
+            }
+
+            // Act - must complete; if serial, the first client's barrier wait would
+            // never be released because the others never get to call DisposeAsync.
+            await manager.DisposeAsync();
+
+            // Assert - all participants reached the barrier (no timeout exceptions thrown)
+            barrier.ParticipantsRemaining.Should().Be(clientCount,
+                "the barrier should reset after the single phase completes");
+        }
     }
 
     public class InitializeAsyncTests : McpClientManagerTests

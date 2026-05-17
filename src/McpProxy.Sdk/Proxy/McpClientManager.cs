@@ -660,20 +660,12 @@ public sealed class McpClientManager : IAsyncDisposable
 
         _disposed = true;
 
-        foreach (var (name, clientInfo) in _clients)
-        {
-            try
-            {
-                await clientInfo.Client.DisposeAsync().ConfigureAwait(false);
-                _healthTracker.RecordConnectionState(name, connected: false);
-                ProxyLogger.BackendDisconnected(_logger, name);
-            }
-            catch (Exception ex)
-            {
-                _healthTracker.RecordConnectionState(name, connected: false);
-                _logger.LogWarning(ex, "Error disposing client {ServerName}", name);
-            }
-        }
+        // Dispose backend clients in parallel to minimize shutdown latency when
+        // multiple backends are connected. Each disposal is wrapped in its own
+        // try/catch so a single failing backend does not prevent the others
+        // from being disposed.
+        var disposeTasks = _clients.Select(kvp => DisposeClientAsync(kvp.Key, kvp.Value));
+        await Task.WhenAll(disposeTasks).ConfigureAwait(false);
 
         // Dispose credential providers and other disposables
         foreach (var disposable in _disposables)
@@ -691,5 +683,20 @@ public sealed class McpClientManager : IAsyncDisposable
         _disposables.Clear();
         _clients.Clear();
         _lock.Dispose();
+    }
+
+    private async Task DisposeClientAsync(string name, McpClientInfo clientInfo)
+    {
+        try
+        {
+            await clientInfo.Client.DisposeAsync().ConfigureAwait(false);
+            _healthTracker.RecordConnectionState(name, connected: false);
+            ProxyLogger.BackendDisconnected(_logger, name);
+        }
+        catch (Exception ex)
+        {
+            _healthTracker.RecordConnectionState(name, connected: false);
+            _logger.LogWarning(ex, "Error disposing client {ServerName}", name);
+        }
     }
 }
