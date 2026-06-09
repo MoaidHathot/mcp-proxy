@@ -497,16 +497,23 @@ public class McpClientManagerTests : IAsyncDisposable
         }
 
         [Fact]
-        public async Task Records_Failure_On_HealthTracker_When_Connect_Throws()
+        public async Task Throws_And_Records_Failure_On_HealthTracker_When_Connect_Throws()
         {
             // Arrange — register a deferred ForwardAuth backend pointing at an
-            // unreachable URL so the lazy connect attempt fails fast. The point
-            // of the test is not the *cause* of failure but the side effect:
-            // before the fix, the catch block here only logged and returned
-            // false, leaving the health tracker (and therefore /debug/health)
-            // showing the backend as healthy/unknown. Operators saw "0 tools"
-            // with no clue why. The fix below RecordConnectionState(false) +
-            // RecordFailure(message) makes the underlying error queryable.
+            // unreachable URL so the lazy connect attempt fails fast.
+            //
+            // Before the "don't swallow" refactor, this method caught the
+            // exception, recorded it on the health tracker, and returned
+            // false. That left every backend-connect failure looking the
+            // same to upstream callers — they saw "no client" and produced
+            // empty tools/list / "not available" tool results, hiding auth
+            // failures (token expiry, missing consent, etc.) behind a
+            // generic 0-tools symptom.
+            //
+            // After the refactor, the catch block still records on the
+            // health tracker (so /debug/health stays informative) AND
+            // re-throws the original exception so each caller can serialize
+            // the real cause into its own protocol envelope.
             var tracker = Substitute.For<IHealthTracker>();
             await using var manager = CreateManager(tracker);
             var config = new ProxyConfiguration
@@ -530,32 +537,30 @@ public class McpClientManagerTests : IAsyncDisposable
             manager.HasDeferredClients.Should().BeTrue();
 
             // Bound the connect attempt so a slow refused-connection path
-            // doesn't stall CI. The internal catch handles either a real
-            // refused-connection exception or the linked cancellation.
+            // doesn't stall CI.
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
             cts.CancelAfter(TimeSpan.FromSeconds(15));
 
-            // Act — the connect attempt should fail, the catch in the SUT
-            // should log + tracker.RecordFailure + return false (not throw).
-            bool result;
-            try
-            {
-                result = await manager.EnsureDeferredClientConnectedAsync("deferred", cts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                // If the connect attempt was still in flight when the timeout
-                // hit, the SUT propagates OperationCanceledException. That's
-                // outside the path under test; treat the test as inconclusive
-                // by re-throwing — CI flakiness here means the host can't even
-                // attempt the connect within 15s, which is a separate problem.
-                throw;
-            }
+            // Act
+            Func<Task> act = () => manager.EnsureDeferredClientConnectedAsync("deferred", cts.Token);
 
-            // Assert
-            result.Should().BeFalse();
+            // Assert — the underlying exception propagates (anything other
+            // than OperationCanceledException, which would mean the test
+            // timed out before the real connect failure surfaced).
+            var thrown = await act.Should().ThrowAsync<Exception>();
+            thrown.Which.Should().NotBeOfType<OperationCanceledException>(
+                "the 15-second timeout should be ample for a 127.0.0.1:1 connect refusal — if it expires, the test is inconclusive");
+
+            // …and the health tracker reflects the failure even though the
+            // method threw rather than returned. /debug/health and any
+            // downstream consumer of IHealthTracker therefore stays informed.
             tracker.Received(1).RecordConnectionState("deferred", connected: false);
             tracker.Received(1).RecordFailure("deferred", Arg.Any<string?>());
+
+            // The deferred entry stays in the deferred list so a subsequent
+            // request can retry (a single transient failure should not
+            // permanently disable the backend).
+            manager.HasDeferredClients.Should().BeTrue();
         }
 
         [Fact]

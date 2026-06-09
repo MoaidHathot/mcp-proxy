@@ -189,12 +189,29 @@ public sealed class McpClientManager : IAsyncDisposable
 
     /// <summary>
     /// Attempts to connect a specific deferred client by name. If the client is already
-    /// connected or is not in the deferred list, this is a no-op. Used by
-    /// <see cref="SingleServerProxy"/> to lazily connect deferred backends on first request.
+    /// connected this returns <c>true</c> immediately. If the name is not in the deferred
+    /// list (either never deferred, or already removed) this returns <c>false</c>. If the
+    /// name IS deferred and a connect attempt is made, the result is one of:
+    /// <list type="bullet">
+    ///   <item><c>true</c> — connect succeeded; the client is now registered in
+    ///   <see cref="Clients"/> and removed from the deferred list.</item>
+    ///   <item>An exception is thrown — connect failed. The original exception
+    ///   (auth failure, transport error, etc.) propagates to the caller so the
+    ///   underlying cause is visible to whatever protocol envelope the caller
+    ///   serializes (JSON-RPC error for tools/list, <c>CallToolResult.IsError</c>
+    ///   for tool calls, etc.). The deferred entry stays in place so the next
+    ///   request retries the connect — a single failed attempt does not
+    ///   permanently disable the backend.</item>
+    /// </list>
+    /// Cancellation is always re-thrown without touching the health tracker.
+    /// Used by <see cref="SingleServerProxy"/> to lazily connect deferred backends on
+    /// first request.
     /// </summary>
     /// <param name="serverName">The server name to connect.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns><c>true</c> if the client is now connected; <c>false</c> if connection failed.</returns>
+    /// <returns><c>true</c> if the client is now connected; <c>false</c> if the
+    /// name was never deferred (and no connect attempt was made).</returns>
+    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is cancelled.</exception>
     public async Task<bool> EnsureDeferredClientConnectedAsync(string serverName, CancellationToken cancellationToken = default)
     {
         // Already connected
@@ -242,13 +259,26 @@ public sealed class McpClientManager : IAsyncDisposable
 
                 // …and surface it on the health tracker so the failure shows up
                 // in /debug/health (and any downstream consumer of IHealthTracker).
-                // Without this, callers see a successful tools/list returning
-                // 0 tools, because GetClientInfoAsync just returns null when the
-                // deferred-connect path fails — making auth failures look like
-                // empty backends.
                 _healthTracker.RecordConnectionState(serverName, connected: false);
                 _healthTracker.RecordFailure(serverName, ex.Message);
-                return false;
+
+                // Re-throw the original exception so callers (SingleServerProxy
+                // and its consumers) see the actual underlying cause —
+                // historically this catch returned `false`, which made
+                // GetClientInfoAsync return null and made ListToolsAsync /
+                // CallToolAsync produce silent empty/"not available" responses.
+                // That hid auth failures (token expiry, missing consent,
+                // network errors, etc.) behind a generic "0 tools" symptom.
+                // Re-throwing lets each upstream caller decide how to surface
+                // the error in its own protocol envelope (CallToolResult.IsError,
+                // JSON-RPC error for tools/list, etc.).
+                //
+                // The deferred entry is intentionally NOT removed from
+                // _deferredClients so the next request will retry the connect —
+                // a single failed attempt (e.g. transient network blip, expired
+                // token that will be refreshed via cached refresh-token) should
+                // not permanently disable the backend.
+                throw;
             }
         }
         finally

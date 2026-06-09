@@ -74,6 +74,14 @@ public sealed class SingleServerProxy
     /// <summary>
     /// Lists all tools from this backend server.
     /// </summary>
+    /// <remarks>
+    /// Propagates any exception thrown by the deferred-connect path or by the
+    /// backend's own <c>tools/list</c> call. The previous implementation
+    /// swallowed both, returning an empty tool list — that turned every auth
+    /// or transport failure into the same indistinguishable "0 tools" symptom.
+    /// MCP clients now see the actual error (e.g. an Azure AD code) and can
+    /// act on it, instead of silently hallucinating with no tools.
+    /// </remarks>
     public async ValueTask<ListToolsResult> ListToolsAsync(
         CancellationToken cancellationToken = default)
     {
@@ -90,22 +98,19 @@ public sealed class SingleServerProxy
         {
             ProxyLogger.ListingToolsFromServer(_logger, _serverName);
 
-            try
-            {
-                var tools = await clientInfo.Client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+            // Intentionally NOT wrapped in try/catch: a tools/list failure on a
+            // connected backend (timeout, server error, protocol mismatch) must
+            // propagate so the MCP client sees the real cause. Silently returning
+            // a partial list (or just virtual tools) was the original bug.
+            var tools = await clientInfo.Client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
-                foreach (var tool in tools)
-                {
-                    if (_filter.ShouldInclude(tool, _serverName))
-                    {
-                        var transformed = _transformer.Transform(tool, _serverName);
-                        allTools.Add(transformed);
-                    }
-                }
-            }
-            catch (Exception ex)
+            foreach (var tool in tools)
             {
-                _logger.LogError(ex, "Failed to list tools from server '{ServerName}'", _serverName);
+                if (_filter.ShouldInclude(tool, _serverName))
+                {
+                    var transformed = _transformer.Transform(tool, _serverName);
+                    allTools.Add(transformed);
+                }
             }
         }
 
@@ -117,6 +122,14 @@ public sealed class SingleServerProxy
     /// <summary>
     /// Calls a tool on this backend server.
     /// </summary>
+    /// <remarks>
+    /// Wraps <see cref="GetClientInfoAsync"/> in a try/catch so a deferred-connect
+    /// failure surfaces as a <see cref="CallToolResult"/> with <c>IsError = true</c>
+    /// containing the original exception message. The previous behavior swallowed
+    /// the exception silently and returned a generic "Server X not available"
+    /// stub that hid the actual cause (auth failure, etc.). Cancellation is still
+    /// rethrown.
+    /// </remarks>
     public async ValueTask<CallToolResult> CallToolAsync(
         CallToolRequestParams request,
         CancellationToken cancellationToken = default)
@@ -129,9 +142,32 @@ public sealed class SingleServerProxy
             return await virtualTool.Handler(request, cancellationToken).ConfigureAwait(false);
         }
 
-        var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
+        McpClientInfo? clientInfo;
+        try
+        {
+            clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // Cancellation propagates verbatim
+        }
+        catch (Exception ex)
+        {
+            // Connect failed: surface the real cause inside the tool-result
+            // envelope so the MCP client sees something actionable
+            // ("AADSTS50105: …") instead of an opaque "not available".
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = $"Server '{_serverName}' not available: {ex.Message}" }],
+                IsError = true
+            };
+        }
+
         if (clientInfo is null)
         {
+            // Reachable when the backend was never deferred (and no connect
+            // attempt was made) — preserve the legacy "not available" message
+            // since there is no underlying exception to surface.
             return new CallToolResult
             {
                 Content = [new TextContentBlock { Text = $"Server '{_serverName}' not available" }],
@@ -268,6 +304,10 @@ public sealed class SingleServerProxy
     /// <summary>
     /// Lists all resources from this backend server.
     /// </summary>
+    /// <remarks>
+    /// Propagates exceptions from the deferred-connect path and the backend
+    /// resources/list call. See <see cref="ListToolsAsync"/> for rationale.
+    /// </remarks>
     public async ValueTask<ListResourcesResult> ListResourcesAsync(
         CancellationToken cancellationToken = default)
     {
@@ -279,17 +319,9 @@ public sealed class SingleServerProxy
 
         ProxyLogger.ListingResourcesFromServer(_logger, _serverName);
 
-        var allResources = new List<Resource>();
-
-        try
-        {
-            var resources = await clientInfo.Client.ListResourcesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-            allResources.AddRange(resources);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to list resources from server '{ServerName}'", _serverName);
-        }
+        // Intentionally NOT wrapped — see ListToolsAsync remarks.
+        var resources = await clientInfo.Client.ListResourcesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+        var allResources = new List<Resource>(resources);
 
         ProxyLogger.ResourcesListed(_logger, allResources.Count);
 
@@ -299,11 +331,31 @@ public sealed class SingleServerProxy
     /// <summary>
     /// Reads a resource from this backend server.
     /// </summary>
+    /// <remarks>
+    /// Wraps <see cref="GetClientInfoAsync"/> so a deferred-connect failure
+    /// surfaces in the resource text. See <see cref="CallToolAsync"/> for rationale.
+    /// </remarks>
     public async ValueTask<ReadResourceResult> ReadResourceAsync(
         ReadResourceRequestParams request,
         CancellationToken cancellationToken = default)
     {
-        var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
+        McpClientInfo? clientInfo;
+        try
+        {
+            clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new ReadResourceResult
+            {
+                Contents = [new TextResourceContents { Uri = request.Uri, Text = $"Server '{_serverName}' not available: {ex.Message}" }]
+            };
+        }
+
         if (clientInfo is null)
         {
             var uri = request.Uri;
@@ -324,6 +376,10 @@ public sealed class SingleServerProxy
     /// <summary>
     /// Lists all prompts from this backend server.
     /// </summary>
+    /// <remarks>
+    /// Propagates exceptions from the deferred-connect path and the backend
+    /// prompts/list call. See <see cref="ListToolsAsync"/> for rationale.
+    /// </remarks>
     public async ValueTask<ListPromptsResult> ListPromptsAsync(
         CancellationToken cancellationToken = default)
     {
@@ -335,17 +391,9 @@ public sealed class SingleServerProxy
 
         ProxyLogger.ListingPromptsFromServer(_logger, _serverName);
 
-        var allPrompts = new List<Prompt>();
-
-        try
-        {
-            var prompts = await clientInfo.Client.ListPromptsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-            allPrompts.AddRange(prompts);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to list prompts from server '{ServerName}'", _serverName);
-        }
+        // Intentionally NOT wrapped — see ListToolsAsync remarks.
+        var prompts = await clientInfo.Client.ListPromptsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+        var allPrompts = new List<Prompt>(prompts);
 
         ProxyLogger.PromptsListed(_logger, allPrompts.Count);
 
@@ -355,11 +403,31 @@ public sealed class SingleServerProxy
     /// <summary>
     /// Gets a prompt from this backend server.
     /// </summary>
+    /// <remarks>
+    /// Wraps <see cref="GetClientInfoAsync"/> so a deferred-connect failure
+    /// surfaces in the prompt message. See <see cref="CallToolAsync"/> for rationale.
+    /// </remarks>
     public async ValueTask<GetPromptResult> GetPromptAsync(
         GetPromptRequestParams request,
         CancellationToken cancellationToken = default)
     {
-        var clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
+        McpClientInfo? clientInfo;
+        try
+        {
+            clientInfo = await GetClientInfoAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new GetPromptResult
+            {
+                Messages = [new PromptMessage { Role = Role.Assistant, Content = new TextContentBlock { Text = $"Server '{_serverName}' not available: {ex.Message}" } }]
+            };
+        }
+
         if (clientInfo is null)
         {
             return new GetPromptResult

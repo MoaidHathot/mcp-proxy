@@ -397,6 +397,148 @@ public class SingleServerProxyTests : IAsyncDisposable
         }
     }
 
+    public class DeferredConnectFailureTests : SingleServerProxyTests
+    {
+        /// <summary>
+        /// Initializes <see cref="SingleServerProxyTests._clientManager"/> with a
+        /// deferred ForwardAuth backend at <c>127.0.0.1:1</c> that always refuses
+        /// connections — the lazy connect attempt is guaranteed to throw, exercising
+        /// the propagation path under test. The proxy's server name matches
+        /// <see cref="SingleServerProxyTests._serverName"/>.
+        /// </summary>
+        private async Task<SingleServerProxy> CreateProxyWithFailingDeferredBackendAsync()
+        {
+            var config = new ProxyConfiguration
+            {
+                Mcp = new Dictionary<string, ServerConfiguration>
+                {
+                    [_serverName] = new()
+                    {
+                        Type = ServerTransportType.Sse,
+                        Url = "http://127.0.0.1:1/mcp/sse",
+                        Auth = new BackendAuthConfiguration
+                        {
+                            Type = BackendAuthType.ForwardAuthorization
+                        }
+                    }
+                }
+            };
+            await _clientManager.InitializeAsync(config, TestContext.Current.CancellationToken);
+            return CreateProxy(config.Mcp[_serverName]);
+        }
+
+        private static CancellationTokenSource BoundedToken(int seconds = 15)
+        {
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(seconds));
+            return cts;
+        }
+
+        [Fact]
+        public async Task ListToolsAsync_PropagatesDeferredConnectException()
+        {
+            // Arrange
+            var proxy = await CreateProxyWithFailingDeferredBackendAsync();
+            using var cts = BoundedToken();
+
+            // Act
+            Func<Task> act = () => proxy.ListToolsAsync(cts.Token).AsTask();
+
+            // Assert — previously returned an empty Tools list (the symptom the
+            // "don't swallow" refactor targets); now propagates the real
+            // exception so MCP clients see the underlying connect failure.
+            var thrown = await act.Should().ThrowAsync<Exception>();
+            thrown.Which.Should().NotBeOfType<OperationCanceledException>(
+                "15s should be ample for a 127.0.0.1:1 refusal — anything slower means the test is inconclusive");
+        }
+
+        [Fact]
+        public async Task ListResourcesAsync_PropagatesDeferredConnectException()
+        {
+            var proxy = await CreateProxyWithFailingDeferredBackendAsync();
+            using var cts = BoundedToken();
+
+            Func<Task> act = () => proxy.ListResourcesAsync(cts.Token).AsTask();
+
+            var thrown = await act.Should().ThrowAsync<Exception>();
+            thrown.Which.Should().NotBeOfType<OperationCanceledException>();
+        }
+
+        [Fact]
+        public async Task ListPromptsAsync_PropagatesDeferredConnectException()
+        {
+            var proxy = await CreateProxyWithFailingDeferredBackendAsync();
+            using var cts = BoundedToken();
+
+            Func<Task> act = () => proxy.ListPromptsAsync(cts.Token).AsTask();
+
+            var thrown = await act.Should().ThrowAsync<Exception>();
+            thrown.Which.Should().NotBeOfType<OperationCanceledException>();
+        }
+
+        [Fact]
+        public async Task CallToolAsync_OnDeferredConnectFailure_ReturnsIsErrorResultCarryingTheExceptionMessage()
+        {
+            // Arrange — same setup as ListToolsAsync_PropagatesDeferredConnectException
+            // but CallTool has a structured error envelope (CallToolResult.IsError),
+            // so the exception is caught and its message is embedded in the result
+            // rather than propagated as a transport error.
+            var proxy = await CreateProxyWithFailingDeferredBackendAsync();
+            using var cts = BoundedToken();
+            var request = new CallToolRequestParams { Name = "some-tool" };
+
+            // Act
+            var result = await proxy.CallToolAsync(request, cts.Token);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.IsError.Should().BeTrue();
+            result.Content.Should().HaveCount(1);
+            var text = result.Content[0] as TextContentBlock;
+            text.Should().NotBeNull();
+            text!.Text.Should().StartWith($"Server '{_serverName}' not available: ");
+            // The text after the colon should NOT just be empty — it must include
+            // the underlying exception message so the operator/LLM sees the cause.
+            text.Text.Substring($"Server '{_serverName}' not available: ".Length)
+                .Should().NotBeEmpty("the underlying exception message must be embedded so the cause is visible");
+        }
+
+        [Fact]
+        public async Task ReadResourceAsync_OnDeferredConnectFailure_ReturnsTextContentCarryingTheExceptionMessage()
+        {
+            var proxy = await CreateProxyWithFailingDeferredBackendAsync();
+            using var cts = BoundedToken();
+            var request = new ReadResourceRequestParams { Uri = "file:///x.txt" };
+
+            var result = await proxy.ReadResourceAsync(request, cts.Token);
+
+            result.Should().NotBeNull();
+            result.Contents.Should().HaveCount(1);
+            var text = result.Contents[0] as TextResourceContents;
+            text.Should().NotBeNull();
+            text!.Text.Should().StartWith($"Server '{_serverName}' not available: ");
+            text.Text.Substring($"Server '{_serverName}' not available: ".Length).Should().NotBeEmpty();
+        }
+
+        [Fact]
+        public async Task GetPromptAsync_OnDeferredConnectFailure_ReturnsAssistantMessageCarryingTheExceptionMessage()
+        {
+            var proxy = await CreateProxyWithFailingDeferredBackendAsync();
+            using var cts = BoundedToken();
+            var request = new GetPromptRequestParams { Name = "p" };
+
+            var result = await proxy.GetPromptAsync(request, cts.Token);
+
+            result.Should().NotBeNull();
+            result.Messages.Should().HaveCount(1);
+            result.Messages[0].Role.Should().Be(Role.Assistant);
+            var text = result.Messages[0].Content as TextContentBlock;
+            text.Should().NotBeNull();
+            text!.Text.Should().StartWith($"Server '{_serverName}' not available: ");
+            text.Text.Substring($"Server '{_serverName}' not available: ".Length).Should().NotBeEmpty();
+        }
+    }
+
     private sealed class TestPreInvokeHook : IPreInvokeHook
     {
         public bool WasExecuted { get; private set; }
