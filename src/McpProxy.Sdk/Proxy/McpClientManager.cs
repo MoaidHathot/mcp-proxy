@@ -114,6 +114,8 @@ public sealed class McpClientManager : IAsyncDisposable
                     // This prevents startup crashes when a backend is temporarily unreachable
                     // or when credentials need interactive consent.
                     ProxyLogger.BackendConnectionFailed(_logger, name, ex);
+                    _healthTracker.RecordConnectionState(name, connected: false);
+                    _healthTracker.RecordFailure(name, ex.Message);
                     _deferredClients[name] = serverConfig;
                     ProxyLogger.BackendConnectionDeferred(_logger, name);
                 }
@@ -169,6 +171,8 @@ public sealed class McpClientManager : IAsyncDisposable
                     // that isn't available yet. The client stays deferred and will be
                     // retried on subsequent requests once the caller authenticates.
                     ProxyLogger.BackendConnectionFailed(_logger, name, ex);
+                    _healthTracker.RecordConnectionState(name, connected: false);
+                    _healthTracker.RecordFailure(name, ex.Message);
                 }
             }
         }
@@ -233,7 +237,17 @@ public sealed class McpClientManager : IAsyncDisposable
             }
             catch (Exception ex)
             {
+                // Log the structured error for proxy operators…
                 ProxyLogger.BackendConnectionFailed(_logger, serverName, ex);
+
+                // …and surface it on the health tracker so the failure shows up
+                // in /debug/health (and any downstream consumer of IHealthTracker).
+                // Without this, callers see a successful tools/list returning
+                // 0 tools, because GetClientInfoAsync just returns null when the
+                // deferred-connect path fails — making auth failures look like
+                // empty backends.
+                _healthTracker.RecordConnectionState(serverName, connected: false);
+                _healthTracker.RecordFailure(serverName, ex.Message);
                 return false;
             }
         }

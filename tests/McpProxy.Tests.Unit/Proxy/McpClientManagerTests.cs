@@ -495,6 +495,105 @@ public class McpClientManagerTests : IAsyncDisposable
             // Assert
             result.Should().BeFalse();
         }
+
+        [Fact]
+        public async Task Records_Failure_On_HealthTracker_When_Connect_Throws()
+        {
+            // Arrange — register a deferred ForwardAuth backend pointing at an
+            // unreachable URL so the lazy connect attempt fails fast. The point
+            // of the test is not the *cause* of failure but the side effect:
+            // before the fix, the catch block here only logged and returned
+            // false, leaving the health tracker (and therefore /debug/health)
+            // showing the backend as healthy/unknown. Operators saw "0 tools"
+            // with no clue why. The fix below RecordConnectionState(false) +
+            // RecordFailure(message) makes the underlying error queryable.
+            var tracker = Substitute.For<IHealthTracker>();
+            await using var manager = CreateManager(tracker);
+            var config = new ProxyConfiguration
+            {
+                Mcp = new Dictionary<string, ServerConfiguration>
+                {
+                    ["deferred"] = new()
+                    {
+                        Type = ServerTransportType.Sse,
+                        // Port 1 reliably refuses connections on every platform we ship to;
+                        // pick a numeric IP to skip DNS so the failure surface stays small.
+                        Url = "http://127.0.0.1:1/mcp/sse",
+                        Auth = new BackendAuthConfiguration
+                        {
+                            Type = BackendAuthType.ForwardAuthorization
+                        }
+                    }
+                }
+            };
+            await manager.InitializeAsync(config, TestContext.Current.CancellationToken);
+            manager.HasDeferredClients.Should().BeTrue();
+
+            // Bound the connect attempt so a slow refused-connection path
+            // doesn't stall CI. The internal catch handles either a real
+            // refused-connection exception or the linked cancellation.
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(15));
+
+            // Act — the connect attempt should fail, the catch in the SUT
+            // should log + tracker.RecordFailure + return false (not throw).
+            bool result;
+            try
+            {
+                result = await manager.EnsureDeferredClientConnectedAsync("deferred", cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // If the connect attempt was still in flight when the timeout
+                // hit, the SUT propagates OperationCanceledException. That's
+                // outside the path under test; treat the test as inconclusive
+                // by re-throwing — CI flakiness here means the host can't even
+                // attempt the connect within 15s, which is a separate problem.
+                throw;
+            }
+
+            // Assert
+            result.Should().BeFalse();
+            tracker.Received(1).RecordConnectionState("deferred", connected: false);
+            tracker.Received(1).RecordFailure("deferred", Arg.Any<string?>());
+        }
+
+        [Fact]
+        public async Task Does_Not_Record_Failure_On_HealthTracker_When_Cancelled()
+        {
+            // Arrange — cancellation is not a failure to surface. The catch
+            // for OperationCanceledException rethrows without touching the
+            // tracker, so a graceful shutdown / client abort doesn't pollute
+            // the health view with phantom errors.
+            var tracker = Substitute.For<IHealthTracker>();
+            await using var manager = CreateManager(tracker);
+            var config = new ProxyConfiguration
+            {
+                Mcp = new Dictionary<string, ServerConfiguration>
+                {
+                    ["deferred"] = new()
+                    {
+                        Type = ServerTransportType.Sse,
+                        Url = "http://127.0.0.1:1/mcp/sse",
+                        Auth = new BackendAuthConfiguration
+                        {
+                            Type = BackendAuthType.ForwardAuthorization
+                        }
+                    }
+                }
+            };
+            await manager.InitializeAsync(config, TestContext.Current.CancellationToken);
+
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+
+            // Act
+            Func<Task> act = () => manager.EnsureDeferredClientConnectedAsync("deferred", cts.Token);
+
+            // Assert — cancellation propagates; tracker is untouched.
+            await act.Should().ThrowAsync<OperationCanceledException>();
+            tracker.DidNotReceive().RecordFailure(Arg.Any<string>(), Arg.Any<string?>());
+        }
     }
 
     public async ValueTask DisposeAsync()
