@@ -314,7 +314,8 @@ public sealed class SdkEnabledProxyServer
             ToolName = toolInfo.OriginalName,
             Request = modifiedRequest,
             CancellationToken = cancellationToken,
-            AuthenticationResult = authResult
+            AuthenticationResult = authResult,
+            ToolInputSchema = toolInfo.Tool.InputSchema
         };
 
         // Execute global pre-invoke hooks

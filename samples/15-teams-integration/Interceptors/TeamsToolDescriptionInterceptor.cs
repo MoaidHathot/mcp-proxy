@@ -19,9 +19,12 @@ public sealed class TeamsToolDescriptionInterceptor : IToolInterceptor
     private static readonly Dictionary<string, string> s_enhancedDescriptions = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ListChats"] = """
-            List the user's chats. The proxy automatically adds pagination (top=20) if not specified \
-            and caches results for faster subsequent lookups. Pass forceRefresh=true to bypass cache. \
-            Supports filters: userUpns (array of UPNs), topic (chat topic), top (page size, default 20).
+            List the user's chats. The proxy caches results for faster subsequent lookups and \
+            bounds the result size automatically. Pass forceRefresh=true to bypass cache. \
+            Supports filters: memberUpns (array of member UPNs), topic (chat topic). \
+            Pagination is controlled by fetchAllPages (boolean): the default returns a single \
+            page; pass fetchAllPages=true to retrieve every page (slower, may time out for \
+            users with many chats).
             """,
         ["ListTeams"] = """
             List the user's teams. The proxy automatically adds pagination and caches results. \

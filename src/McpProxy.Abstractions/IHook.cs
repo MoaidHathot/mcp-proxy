@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ModelContextProtocol.Protocol;
 
 namespace McpProxy.Abstractions;
@@ -39,6 +40,15 @@ public sealed class HookContext<TRequest>
     /// Contains principal identity, roles, scopes, and other claims from authentication.
     /// </summary>
     public AuthenticationResult? AuthenticationResult { get; init; }
+
+    /// <summary>
+    /// Gets the JSON Schema (the MCP tool's <c>inputSchema</c>) describing the parameters
+    /// the target tool accepts, when known. Pre-invoke hooks should use this to avoid
+    /// injecting arguments the tool does not declare — a backend rejects the whole call
+    /// when it receives an unknown argument (e.g. <c>Unknown argument: 'top'</c>).
+    /// May be <see langword="null"/> when the schema is unavailable at the call site.
+    /// </summary>
+    public JsonElement? ToolInputSchema { get; init; }
 }
 
 /// <summary>

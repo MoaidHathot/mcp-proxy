@@ -135,13 +135,12 @@ Commands:
 
 #### Refreshing Chats Cache
 
-Fetch the most recent/active chats using **pagination** and get members for each.
+Fetch the most recent/active chats and get members for each.
 
-1. Call `microsoft-teams-ListChats` with `userUpns: []` and **`top: 20`** to get the first page of chats
-   - **ALWAYS use `top` parameter** — unfiltered ListChats without pagination WILL time out for users with many chats
-   - If you need more, make subsequent paginated calls (the response includes a `nextLink` for the next page)
-   - Collect up to 50 chats total across pages (2-3 pages of 20)
-   - **If any call times out**, reduce `top` to `10` and retry
+1. Call `microsoft-teams-ListChats` with `memberUpns: []` to list chats
+   - `ListChats` does NOT accept a `top` parameter — the backend rejects it. The proxy keeps the result bounded to a single page by default.
+   - Only pass `fetchAllPages: true` if you genuinely need every chat — this is slow and WILL time out for users with many chats
+   - Prefer narrowing with `memberUpns` or `topic` over fetching everything
 2. For each collected chat, call `microsoft-teams-ListChatMembers` to get members
    - Process members in batches of 10 chats at a time to avoid overwhelming the API
    - If a member call times out, skip that chat and continue with the next
@@ -196,7 +195,7 @@ python scripts/cache-manager.py resolve "<person name>"
 **If `found: false`** — the person is not in any local cache tier. Use this escalation path:
 
 1. **WorkIQ (FAST — ~2-3 seconds)** — `workiq-ask_work_iq` with `"What is <person name>'s email/UPN?"`. **This is faster than any ListChats call.**
-2. **Filtered ListChats** — `microsoft-teams-ListChats` with `userUpns: ["resolved-upn"]` and `top: 20` → find the chat ID.
+2. **Filtered ListChats** — `microsoft-teams-ListChats` with `memberUpns: ["resolved-upn"]` → find the chat ID.
 3. **Update cache** — `python cache-manager.py add-person ...` and `add-chat ...` so `resolve` finds them next time.
 
 **NEVER call ListChats just to find a person's UPN** — that's what WorkIQ and the `resolve` command are for.
@@ -334,7 +333,7 @@ python -m scripts.api reply-channel --team "<TEAM_GUID>" --channel "<CHANNEL_ID>
 
 | Action | MCP Tool | Required Context | Optional Params |
 |--------|----------|------------------|-----------------|
-| List chats | `microsoft-teams-ListChats` | userUpns (array) | **topic**, **$top** |
+| List chats | `microsoft-teams-ListChats` | memberUpns (array) | **topic**, **fetchAllPages** |
 | Get chat details | `microsoft-teams-GetChat` | chatId | |
 | Create 1:1 chat | `microsoft-teams-CreateChat` | chatType: "oneOnOne", member UPNs | |
 | Create group chat | `microsoft-teams-CreateChat` | chatType: "group", topic, member UPNs | |
@@ -367,15 +366,15 @@ python -m scripts.api reply-channel --team "<TEAM_GUID>" --channel "<CHANNEL_ID>
 
 ### Avoiding Timeouts with ListChats
 
-`ListChats` is the most expensive call — it **will** time out when the user has hundreds of chats. **Always use pagination and prefer targeted queries over full unfiltered calls.**
+`ListChats` is the most expensive call — it **will** time out when the user has hundreds of chats. Prefer targeted, filtered queries and let the proxy keep the result bounded.
 
-**CRITICAL: Always use `top` parameter with ListChats:**
+**CRITICAL: `ListChats` does NOT accept a `top` parameter — the backend rejects it (`Unknown argument: 'top'`).** Pagination is controlled by the boolean `fetchAllPages`:
 ```
-# GOOD: Paginated — fast, predictable response time
-microsoft-teams-ListChats with userUpns: [], top: 20
+# GOOD: bounded — the proxy returns a single page, fast and predictable
+microsoft-teams-ListChats with memberUpns: []
 
-# BAD: Unpaginated — fetches ALL chats, WILL time out
-microsoft-teams-ListChats with userUpns: []
+# BAD: fetchAllPages crawls every page — slow, WILL time out for users with many chats
+microsoft-teams-ListChats with memberUpns: [], fetchAllPages: true
 ```
 
 **Priority order for finding a chat:**
@@ -383,8 +382,8 @@ microsoft-teams-ListChats with userUpns: []
 1. **recentcontacts.md** — Instant lookup, no MCP call needed
 2. **JSON cache** — Check `chats.json` if fresh (< 4 hours old)
 3. **WorkIQ** — For person UPN resolution (`"What is <name>'s email?"`) — **~2-3 seconds**, much faster than ListChats
-4. **Filtered ListChats with pagination** — Use `userUpns` or `topic` AND `top: 20` to narrow results
-5. **Unfiltered ListChats with pagination** — Last resort only (cache refresh), always `top: 20`
+4. **Filtered ListChats** — Use `memberUpns` or `topic` to narrow results (still bounded — do not set `fetchAllPages`)
+5. **Unfiltered ListChats** — Last resort only (cache refresh); add `fetchAllPages: true` only if a single page is not enough
 
 **When looking for a specific person's chat:**
 
@@ -393,21 +392,21 @@ microsoft-teams-ListChats with userUpns: []
 workiq-ask_work_iq: "What is Alice's email/UPN?"  → alice@contoso.com (2-3 seconds)
 python cache-manager.py lookup-chat alice@contoso.com  → chat ID from cache (instant)
 
-# GOOD: Filter by UPN with pagination — if cache misses
-microsoft-teams-ListChats with userUpns: ["alice@contoso.com"], top: 20
+# GOOD: Filter by UPN — if cache misses
+microsoft-teams-ListChats with memberUpns: ["alice@contoso.com"]
 
 # BAD: Fetch all chats to find a person — slow, will timeout
-microsoft-teams-ListChats with userUpns: []
+microsoft-teams-ListChats with memberUpns: [], fetchAllPages: true
 ```
 
 **When looking for a group chat by topic:**
 
 ```
-# GOOD: Filter by topic with pagination — returns only matching chats
-microsoft-teams-ListChats with topic: "Project Standup", top: 20
+# GOOD: Filter by topic — returns only matching chats
+microsoft-teams-ListChats with topic: "Project Standup"
 
 # BAD: Fetch all and search — slow, unnecessary
-microsoft-teams-ListChats with userUpns: []
+microsoft-teams-ListChats with memberUpns: [], fetchAllPages: true
 ```
 
 ### OData Query Parameters
@@ -416,13 +415,14 @@ These parameters are supported by the Microsoft Teams MCP and map to Microsoft G
 
 | Parameter | Tool Support | Description | Examples |
 |-----------|-------------|-------------|----------|
-| **$top** | ListChats, ListChatMessages, ListChannelMessages, ListChannelMembers | Limit number of results returned | `top: 20` — return at most 20 items. **ALWAYS use with ListChats** |
+| **$top** | ListChatMessages, ListChannelMessages, ListChannelMembers | Limit number of results returned | `top: 20` — return at most 20 items. **Note: `ListChats` does NOT support `$top`** (use `fetchAllPages` instead). |
 | **$filter** | ListChatMessages, ListChannels, GetChannel | OData filter expression | `filter: "createdDateTime ge 2026-03-01T00:00:00Z"` |
 | **$orderby** | ListChatMessages | Sort expression | `orderby: "createdDateTime desc"` |
 | **$expand** | ListChannelMessages, ListChannelMembers, GetTeam | Include related entities | `expand: "replies"` — include message replies |
 | **$select** | ListChannels, GetTeam, GetChannel | Return only specific fields | `select: "displayName,id"` |
 | **topic** | ListChats | Filter chats by topic name | `topic: "Weekly Standup"` |
-| **userUpns** | ListChats | Filter chats by member UPN(s) | `userUpns: ["user@contoso.com"]` |
+| **memberUpns** | ListChats | Filter chats by member UPN(s) | `memberUpns: ["user@contoso.com"]` |
+| **fetchAllPages** | ListChats | Page through ALL chats instead of one bounded page (slow) | `fetchAllPages: true` |
 
 ### Common Filter Patterns
 
@@ -524,7 +524,7 @@ Resolve the specific IDs needed — **do not run a full cache bootstrap**. The g
 **Person resolution priority (fastest first):**
 
 1. **WorkIQ** → `workiq-ask_work_iq` with `"What is <name>'s email?"` — **~2-3 seconds**. Use this as the FIRST external call.
-2. **Filtered ListChats** → `microsoft-teams-ListChats` with `userUpns: ["resolved-upn"]` and `top: 20` — only for finding a chat ID.
+2. **Filtered ListChats** → `microsoft-teams-ListChats` with `memberUpns: ["resolved-upn"]` — only for finding a chat ID.
 3. **ListTeams + ListChannels** → for team/channel resolution when cache misses.
 
 **After resolving externally, update the cache** so `resolve` will find it next time:
@@ -584,10 +584,10 @@ Run chats and teams refresh **in sequence** (not parallel) to avoid API rate lim
 3. For each team → `microsoft-teams-ListChannels` → save response items to a `channels` dict keyed by team ID
 4. Pipe to cache manager: `python cache-manager.py build-teams` (handles cache write + recentcontacts)
 
-**Step B — Chats** (expensive, paginated):
-1. `microsoft-teams-ListChats` with `userUpns: []`, **`top: 20`** — fetch the first page of chats
-2. Make up to 2 more paginated calls (`top: 20` each) to collect ~40-60 chats total
-3. **If any call times out**, reduce `top` to `10` and retry
+**Step B — Chats** (expensive):
+1. `microsoft-teams-ListChats` with `memberUpns: []` — returns one bounded page of chats (the proxy caps it; `ListChats` does NOT accept `top`)
+2. Only add `fetchAllPages: true` if a single page is not enough — this is slow and may time out for users with many chats
+3. Prefer filtering by `memberUpns` or `topic` to avoid large scans
 4. For each chat → `microsoft-teams-ListChatMembers` (batch 10 at a time) → save response items to a `members` dict keyed by chat ID
 5. Pipe to cache manager: `python cache-manager.py build-chats` (handles cache write + people + recentcontacts)
 
@@ -1269,7 +1269,7 @@ These are real failure modes that have caused bugs — read before operating.
 
 - **Cache staleness: the 4-hour TTL means recently created chats/channels won't appear** until cache refresh. If a lookup fails unexpectedly for a chat/channel you know exists, run `refresh all` first.
 - **`recentcontacts.md` name matching is case-sensitive.** Normalize casing when adding entries. "alice johnson" won't match "Alice Johnson".
-- **Never call `ListChats` without `top: 20` pagination.** Unpaginated calls WILL time out for users with many chats — this is not a theoretical risk, it happens regularly.
+- **Never call `ListChats` with `fetchAllPages: true` unless you truly need every chat.** The default (bounded, single page) is fast; fetching all pages WILL time out for users with many chats. Note: `ListChats` does NOT accept a `top` parameter — passing one is rejected by the backend.
 
 ### Rich Messaging (Playwright)
 
@@ -1298,8 +1298,8 @@ These are real failure modes that have caused bugs — read before operating.
 - **NEVER** read `recentcontacts.md` as a raw file — always use the `resolve` command or `cache-manager.py` scripts for lookups
 - **NEVER** call `ListChats` or `ListTeams` when `resolve` or `lookup-*` returns results. Exhausting the local cache before MCP calls is mandatory.
 - **ALWAYS** use `workiq-ask_work_iq` for person UPN resolution before calling ListChats — WorkIQ returns in ~2-3 seconds vs 10-30+ seconds for ListChats. **NEVER call ListChats just to find a person's UPN.**
-- **ALWAYS** use `top: 20` pagination with `ListChats` — **NEVER call ListChats without the `top` parameter**. Unfiltered, unpaginated ListChats WILL time out for users with many chats.
-- **ALWAYS** use filtered `ListChats` (with `userUpns` or `topic`) when looking for a specific chat — combine with `top: 20` for safety
+- **NEVER** pass a `top` parameter to `ListChats` — the backend rejects it (`Unknown argument: 'top'`). The proxy already bounds `ListChats` to a single page; only add `fetchAllPages: true` when you truly need every chat (slow, may time out).
+- **ALWAYS** use filtered `ListChats` (with `memberUpns` or `topic`) when looking for a specific chat — filtering keeps the (already bounded) result small
 - **ALWAYS** include `members` array (with `displayName`, `upn`, `userId`) in every chat entry when writing to the chats cache — without members, `lookup-chat` cannot resolve person → chat
 - **ALWAYS** use `$top` to limit results when you only need recent messages (e.g., `top: 10` for the latest messages)
 - **ALWAYS** update the cache after resolving any new person, chat, or channel via `cache-manager.py add-person`, `add-chat`, `add-channel` — this builds the fast-lookup index over time

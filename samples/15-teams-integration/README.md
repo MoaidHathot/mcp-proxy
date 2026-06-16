@@ -53,9 +53,9 @@ Client ──(stdio, no auth)──> Proxy ──(Azure AD app auth)──> Team
 - **Multiple patterns** - AWS keys, JWT tokens, connection strings, etc.
 
 ### Automatic Pagination
-- **Enforced limits** - ListChats/ListTeams limited to 20 items
-- **Automatic injection** - Adds `top` parameter if not specified
-- **Capping** - Reduces oversized requests to safe limits
+- **Schema-aware** - Only sets a pagination parameter the target tool actually declares (never injects an argument the backend would reject)
+- **`top` tools** - Adds/caps `top` (page size) for tools that accept it (e.g. `ListChatMessages`)
+- **`fetchAllPages` tools** - Defaults `fetchAllPages=false` for tools that paginate that way (e.g. `ListChats`) so a single bounded page is returned
 
 ### Virtual Tools
 - **teams_resolve** - Unified resolver for people, chats, teams, channels

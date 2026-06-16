@@ -315,7 +315,8 @@ public sealed class McpProxyServer
             ToolName = toolInfo.OriginalName,
             Request = modifiedRequest,
             CancellationToken = cancellationToken,
-            AuthenticationResult = authResult
+            AuthenticationResult = authResult,
+            ToolInputSchema = toolInfo.Tool.InputSchema
         };
 
         // Execute pre-invoke hooks

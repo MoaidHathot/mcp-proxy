@@ -58,7 +58,7 @@ public class TeamsToolDescriptionInterceptorTests
 
             // Assert
             result.Should().HaveCount(1);
-            result[0].Tool.Description.Should().Contain("pagination");
+            result[0].Tool.Description.Should().Contain("fetchAllPages");
             result[0].Tool.Description.Should().Contain("caches");
             result[0].Tool.Description.Should().Contain("forceRefresh");
             result[0].Tool.Name.Should().Be("teams_ListChats");
@@ -203,7 +203,7 @@ public class TeamsToolDescriptionInterceptorTests
 
             // Assert
             // "ListChats" should match because the server name matches
-            result[0].Tool.Description.Should().Contain("pagination");
+            result[0].Tool.Description.Should().Contain("fetchAllPages");
         }
 
         [Fact]

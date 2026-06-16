@@ -699,7 +699,7 @@ void PrintFeatures(string endpoint, AuthModeType mode)
     output.WriteLine("  - Automatic caching of chats, teams, and people");
     output.WriteLine("  - Cache short-circuiting for ListChats, ListTeams, etc.");
     output.WriteLine("  - Credential scanning for outbound messages");
-    output.WriteLine("  - Automatic pagination (top=20) for list operations");
+    output.WriteLine("  - Automatic pagination (schema-aware: bounds list results to a safe page size)");
     
     var authDescription = mode switch
     {
