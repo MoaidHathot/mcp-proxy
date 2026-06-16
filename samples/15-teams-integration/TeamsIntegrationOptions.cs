@@ -80,6 +80,15 @@ public sealed class TeamsIntegrationOptions
     public bool EnableAutoPagination { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets whether to strip request arguments the target tool does not declare in its
+    /// input schema before forwarding to the backend. This prevents the backend from rejecting
+    /// the whole call when it receives an undeclared argument (e.g. <c>Unknown argument: 'top'</c>),
+    /// which protects the proxy from drift between its assumptions and the underlying tool schema.
+    /// Default is true.
+    /// </summary>
+    public bool EnableArgumentSchemaGuard { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets whether to register virtual tools (teams_resolve, teams_cache_status, etc.).
     /// When false, the proxy handles caching, resolution, and validation transparently
     /// via hooks and interceptors — the LLM never sees these tools.

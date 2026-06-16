@@ -56,10 +56,11 @@ public class TeamsToolDescriptionInterceptorTests
             // Act
             var result = interceptor.InterceptTools(tools).ToList();
 
-            // Assert
+            // Assert — the backend's own description is preserved and a proxy note is appended.
             result.Should().HaveCount(1);
-            result[0].Tool.Description.Should().Contain("fetchAllPages");
-            result[0].Tool.Description.Should().Contain("caches");
+            result[0].Tool.Description.Should().StartWith("Original description for teams_ListChats");
+            result[0].Tool.Description.Should().Contain("[Proxy:");
+            result[0].Tool.Description.Should().Contain("cached");
             result[0].Tool.Description.Should().Contain("forceRefresh");
             result[0].Tool.Name.Should().Be("teams_ListChats");
         }
@@ -203,7 +204,7 @@ public class TeamsToolDescriptionInterceptorTests
 
             // Assert
             // "ListChats" should match because the server name matches
-            result[0].Tool.Description.Should().Contain("fetchAllPages");
+            result[0].Tool.Description.Should().Contain("[Proxy:");
         }
 
         [Fact]
@@ -226,7 +227,7 @@ public class TeamsToolDescriptionInterceptorTests
             result.Should().HaveCount(3);
             result[0].Tool.Description.Should().Contain("teams"); // "List the user's teams"
             result[1].Tool.Description.Should().Contain("credential"); // PostMessage mentions credential scanning
-            result[2].Tool.Description.Should().Contain("messages"); // ListChatMessages mentions messages
+            result[2].Tool.Description.Should().Contain("[Proxy:"); // ListChatMessages is paginated → annotated
         }
 
         [Fact]

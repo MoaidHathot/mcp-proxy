@@ -62,14 +62,25 @@ public sealed partial class TeamsCachePopulateHook : IPostInvokeHook
             // Try to parse and cache based on tool name
             var cached = await TryPopulateCacheAsync(toolName, textContent).ConfigureAwait(false);
 
-            if (cached && _autoSave)
+            if (cached)
             {
-                await _cacheService.SaveAsync().ConfigureAwait(false);
+                if (_autoSave)
+                {
+                    await _cacheService.SaveAsync().ConfigureAwait(false);
+                }
+            }
+            else if (IsCacheablePopulateTool(toolName))
+            {
+                // The response parsed but produced nothing to cache. Usually a genuinely empty
+                // list, but it can also mean the backend response shape changed (a drift signal),
+                // so surface it for diagnostics instead of failing silently.
+                LogNoItemsCached(_logger, toolName);
             }
         }
         catch (Exception ex)
         {
-            // Don't fail the request if caching fails
+            // Don't fail the request if caching fails. A parse failure here usually means the
+            // backend returned a non-JSON / changed-shape response — worth seeing in the logs.
             LogCachePopulateError(_logger, toolName, ex.Message);
         }
 
@@ -477,6 +488,16 @@ public sealed partial class TeamsCachePopulateHook : IPostInvokeHook
         return normalized;
     }
 
+    private static bool IsCacheablePopulateTool(string toolName)
+    {
+        return NormalizeToolName(toolName) switch
+        {
+            "listchats" or "listteams" or "listchannels" or "listchatmembers"
+                or "getuser" or "getme" or "getchat" or "getteam" or "getchannel" => true,
+            _ => false
+        };
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // Logging
     // ═══════════════════════════════════════════════════════════════════════
@@ -507,4 +528,7 @@ public sealed partial class TeamsCachePopulateHook : IPostInvokeHook
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to populate cache from {ToolName}: {Error}")]
     private static partial void LogCachePopulateError(ILogger logger, string toolName, string error);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "No cacheable items recognized in {ToolName} response (empty result, or the backend response shape may have changed)")]
+    private static partial void LogNoItemsCached(ILogger logger, string toolName);
 }

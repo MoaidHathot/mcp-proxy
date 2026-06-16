@@ -3,6 +3,7 @@ using McpProxy.Samples.TeamsIntegration.Cache;
 using McpProxy.Samples.TeamsIntegration.Hooks;
 using McpProxy.Samples.TeamsIntegration.Interceptors;
 using McpProxy.Samples.TeamsIntegration.VirtualTools;
+using McpProxy.Sdk.Hooks.BuiltIn;
 
 namespace McpProxy.Samples.TeamsIntegration;
 
@@ -71,6 +72,16 @@ public static class TeamsIntegrationExtensions
         {
             var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<TeamsPaginationHook>.Instance;
             builder.WithGlobalPreInvokeHook(new TeamsPaginationHook(logger, options.DefaultPaginationLimit));
+        }
+
+        if (options.EnableArgumentSchemaGuard)
+        {
+            // Backstop against schema drift / stray arguments: drop any argument the target tool
+            // does not declare before forwarding, so the backend never rejects the whole call with
+            // an "Unknown argument" error. Runs last (high priority) so it cleans up after the
+            // other argument-injecting hooks.
+            var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<SchemaArgumentGuardHook>.Instance;
+            builder.WithGlobalPreInvokeHook(new SchemaArgumentGuardHook(logger));
         }
 
         if (options.EnableCredentialScanning)

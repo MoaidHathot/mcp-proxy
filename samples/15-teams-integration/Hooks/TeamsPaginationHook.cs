@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using McpProxy.Abstractions;
 using ModelContextProtocol.Protocol;
@@ -23,6 +24,7 @@ public sealed partial class TeamsPaginationHook : IPreInvokeHook
     private readonly ILogger<TeamsPaginationHook> _logger;
     private readonly int _defaultTop;
     private readonly HashSet<string> _paginatedTools;
+    private readonly ConcurrentDictionary<string, byte> _warnedNoPageKnob = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Initializes a new instance of <see cref="TeamsPaginationHook"/>.
@@ -85,6 +87,16 @@ public sealed partial class TeamsPaginationHook : IPreInvokeHook
 
         var supportsTop = SchemaDeclaresProperty(schema.Value, "top");
         var supportsFetchAllPages = SchemaDeclaresProperty(schema.Value, "fetchAllPages");
+
+        if (!supportsTop && !supportsFetchAllPages)
+        {
+            // Drift signal: a tool we treat as paginated no longer exposes any pagination knob we
+            // recognize. Warn once per tool so a future backend change is visible in the logs.
+            if (_warnedNoPageKnob.TryAdd(toolName, 0))
+            {
+                LogNoPaginationKnob(_logger, toolName);
+            }
+        }
 
         if (supportsTop)
         {
@@ -157,10 +169,12 @@ public sealed partial class TeamsPaginationHook : IPreInvokeHook
             return true;
         }
 
-        // Check suffix match (for prefixed tools)
+        // Check suffix match for prefixed tools (e.g. `teams_ListChats`,
+        // `microsoft-teams-ListChats`). Require a prefix separator so we don't accidentally
+        // match an unrelated tool whose name merely ends with a paginated tool name.
         return _paginatedTools.Any(t =>
-            toolName.EndsWith(t, StringComparison.OrdinalIgnoreCase) ||
-            toolName.EndsWith($"_{t}", StringComparison.OrdinalIgnoreCase));
+            toolName.EndsWith($"_{t}", StringComparison.OrdinalIgnoreCase) ||
+            toolName.EndsWith($"-{t}", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -221,4 +235,7 @@ public sealed partial class TeamsPaginationHook : IPreInvokeHook
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Defaulting fetchAllPages=false for {ToolName} to bound result size")]
     private static partial void LogFetchAllPagesDisabled(ILogger logger, string toolName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Paginated tool '{ToolName}' declares neither 'top' nor 'fetchAllPages' in its schema - the backend pagination contract may have changed")]
+    private static partial void LogNoPaginationKnob(ILogger logger, string toolName);
 }

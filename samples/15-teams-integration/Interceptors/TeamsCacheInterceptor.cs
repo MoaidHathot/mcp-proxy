@@ -55,7 +55,7 @@ public sealed partial class TeamsCacheInterceptor : IToolCallInterceptor
         // Try to short-circuit based on tool name
         var cachedResult = normalizedTool switch
         {
-            "listchats" => TryGetCachedChats(),
+            "listchats" => TryGetCachedChats(context),
             "listteams" => TryGetCachedTeams(),
             "listchannels" => TryGetCachedChannels(context),
             "listchatmembers" => TryGetCachedChatMembers(context),
@@ -79,7 +79,7 @@ public sealed partial class TeamsCacheInterceptor : IToolCallInterceptor
     // Cache Lookup Methods
     // ═══════════════════════════════════════════════════════════════════════
 
-    private CallToolResult? TryGetCachedChats()
+    private CallToolResult? TryGetCachedChats(ToolCallContext context)
     {
         var chats = _cacheService.GetAllChats();
         if (chats is null)
@@ -87,15 +87,54 @@ public sealed partial class TeamsCacheInterceptor : IToolCallInterceptor
             return null;
         }
 
-        LogCacheLookup(_logger, "chats", chats.Count);
+        // Honor the same filters the backend ListChats supports, so a *filtered* call is not
+        // served an unfiltered cached result:
+        //   memberUpns -> chats that contain every requested member (empty array = no filter)
+        //   topic      -> case-insensitive substring match on the chat topic
+        var memberUpns = GetArgumentStringArray(context, "memberUpns", "userUpns");
+        var topic = GetArgumentString(context, "topic");
+        var hasFilter = (memberUpns is { Count: > 0 }) || !string.IsNullOrWhiteSpace(topic);
+
+        IEnumerable<Cache.Models.CachedChat> matching = chats;
+
+        if (memberUpns is { Count: > 0 })
+        {
+            matching = matching.Where(c =>
+                memberUpns.All(upn => c.Members.Any(m =>
+                    string.Equals(m.Upn, upn, StringComparison.OrdinalIgnoreCase))));
+        }
+
+        if (!string.IsNullOrWhiteSpace(topic))
+        {
+            matching = matching.Where(c =>
+                !string.IsNullOrEmpty(c.Topic) &&
+                c.Topic.Contains(topic, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var matched = matching.ToList();
+
+        // If filters were supplied but nothing matched, fall through to the backend rather than
+        // asserting "no such chats" from a possibly-incomplete cache.
+        if (hasFilter && matched.Count == 0)
+        {
+            return null;
+        }
+
+        LogCacheLookup(_logger, "chats", matched.Count);
 
         var response = new
         {
-            value = chats.Select(c => new
+            value = matched.Select(c => new
             {
                 id = c.Id,
                 topic = c.Topic,
                 chatType = c.ChatType,
+                members = c.Members.Select(m => new
+                {
+                    id = m.UserId,
+                    displayName = m.DisplayName,
+                    userPrincipalName = m.Upn
+                }),
                 memberCount = c.Members.Count,
                 cachedAt = c.CachedAt,
                 isCached = true
@@ -320,6 +359,38 @@ public sealed partial class TeamsCacheInterceptor : IToolCallInterceptor
             if (args.TryGetValue(name, out var value) && value.ValueKind == JsonValueKind.String)
             {
                 return value.GetString();
+            }
+        }
+
+        return null;
+    }
+
+    private static List<string>? GetArgumentStringArray(ToolCallContext context, params string[] paramNames)
+    {
+        var args = context.Request?.Arguments;
+        if (args is null)
+        {
+            return null;
+        }
+
+        foreach (var name in paramNames)
+        {
+            if (args.TryGetValue(name, out var value) && value.ValueKind == JsonValueKind.Array)
+            {
+                var items = new List<string>();
+                foreach (var element in value.EnumerateArray())
+                {
+                    if (element.ValueKind == JsonValueKind.String)
+                    {
+                        var s = element.GetString();
+                        if (!string.IsNullOrEmpty(s))
+                        {
+                            items.Add(s);
+                        }
+                    }
+                }
+
+                return items;
             }
         }
 
