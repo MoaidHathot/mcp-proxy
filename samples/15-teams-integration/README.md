@@ -213,6 +213,11 @@ Client ──(stdio, no auth)──> Proxy ──(user-delegated Bearer token)�
 - Clients connect via stdio without any authentication
 - Token is cached in OS credential store — only needs browser sign-in once (~90 day refresh token)
 - User-specific permissions and data access (same as forward-auth)
+- When the cached token finally expires, the next tool access automatically re-opens the
+  browser for sign-in. If sign-in cannot complete, the proxy surfaces an explicit
+  authentication error to the client instead of silently returning zero tools (controlled
+  by `proxy.backendErrors.onAuthFailure`, default `surface`). A dropped backend session is
+  re-armed so the next request reconnects and re-authenticates.
 
 #### Prerequisites
 

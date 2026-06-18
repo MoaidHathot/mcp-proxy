@@ -164,6 +164,7 @@ The configuration file is JSON with support for comments and trailing commas. En
 | `proxy.routing.basePath` | string | `"/mcp"` | Base path for MCP endpoints |
 | `proxy.caching.tools.enabled` | bool | `true` | Enable tool list caching |
 | `proxy.caching.tools.ttlSeconds` | int | `300` | Cache time-to-live in seconds |
+| `proxy.backendErrors.onAuthFailure` | string | `"surface"` | How backend auth failures are reported: `"surface"` (explicit error) or `"skip"` (legacy silent omit) |
 
 ### Authentication Settings
 
@@ -515,6 +516,38 @@ Configure how the proxy authenticates to remote backend MCP servers. This is sep
 | `azureAd.scopes` | string[] | `[".default"]` | OAuth scopes to request |
 | `azureAd.tokenCacheName` | string | `"mcp-proxy"` | Persistent token cache name in OS credential store |
 | `azureAd.redirectUri` | string | `null` | Redirect URI for interactive browser flow |
+
+#### Credential Expiry and Interactive Re-Authentication
+
+For `InteractiveBrowser` backends, tokens are cached in the OS credential store and
+silently refreshed (~90 day refresh token). When the refresh token finally expires,
+`InteractiveBrowserCredential` automatically opens a browser sign-in **the next time a
+backend is accessed** (tools/list or a tool call) — the proxy does not need a restart.
+
+If interactive sign-in cannot complete (browser closed, timed out, or the proxy is
+running headless), the proxy **surfaces the error to the client instead of silently
+returning zero tools**. The behavior is controlled by `proxy.backendErrors.onAuthFailure`:
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `proxy.backendErrors.onAuthFailure` | string | `"surface"` | `"surface"`: report an explicit authentication error for the affected scope. `"skip"`: legacy behavior — log and omit the backend's tools (may appear as a silent "0 tools"). |
+
+Surfacing is **scoped per credential group**:
+
+- A healthy credential group is never affected by another group's expiry — its tools are
+  listed and callable as normal.
+- If an expired group is the only thing being accessed (e.g., all backends share one
+  credential and it expired), `tools/list` returns an explicit error rather than an empty list.
+- Calling a tool whose backend is blocked on authentication returns the real auth error
+  (with a sign-in hint), not a misleading "tool not found".
+
+Additionally, if a backend session drops (which an expired token can cause), the proxy
+re-arms that backend for lazy reconnection, so the **next** request re-establishes the
+connection and re-runs interactive sign-in if needed.
+
+> **Note:** Interactive sign-in opens a browser on the host where the proxy runs. This
+> works for a local (stdio) proxy co-located with the user. A remote/headless proxy cannot
+> open a browser — there the failure is surfaced as an error rather than a prompt.
 
 ## Advanced MCP Protocol Support
 

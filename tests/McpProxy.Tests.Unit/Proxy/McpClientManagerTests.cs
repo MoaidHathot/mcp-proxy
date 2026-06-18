@@ -1,6 +1,7 @@
 using McpProxy.Abstractions;
 using McpProxy.Sdk.Configuration;
 using McpProxy.Sdk.Debugging;
+using McpProxy.Sdk.Exceptions;
 using McpProxy.Sdk.Proxy;
 using Microsoft.Extensions.Logging;
 
@@ -598,6 +599,64 @@ public class McpClientManagerTests : IAsyncDisposable
             // Assert — cancellation propagates; tracker is untouched.
             await act.Should().ThrowAsync<OperationCanceledException>();
             tracker.DidNotReceive().RecordFailure(Arg.Any<string>(), Arg.Any<string?>());
+        }
+    }
+
+    public class AuthFailureTrackingTests : McpClientManagerTests
+    {
+        private static BackendAuthenticationException Failure(string server, string? group = null) =>
+            new(server, group, $"{server} needs sign-in");
+
+        [Fact]
+        public void RecordAuthFailure_Then_GetAuthFailure_Returns_It()
+        {
+            // Arrange
+            var manager = CreateManager();
+            var failure = Failure("mail", "m365");
+
+            // Act
+            manager.RecordAuthFailure("mail", failure);
+
+            // Assert
+            manager.GetAuthFailure("mail").Should().BeSameAs(failure);
+            manager.RecentAuthFailures.Should().ContainSingle().Which.Should().BeSameAs(failure);
+        }
+
+        [Fact]
+        public void ClearAuthFailure_Removes_The_Entry()
+        {
+            // Arrange
+            var manager = CreateManager();
+            manager.RecordAuthFailure("mail", Failure("mail"));
+
+            // Act
+            manager.ClearAuthFailure("mail");
+
+            // Assert
+            manager.GetAuthFailure("mail").Should().BeNull();
+            manager.RecentAuthFailures.Should().BeEmpty();
+        }
+
+        [Fact]
+        public void GetAuthFailure_Returns_Null_When_None_Recorded()
+        {
+            var manager = CreateManager();
+
+            manager.GetAuthFailure("unknown").Should().BeNull();
+        }
+
+        [Fact]
+        public void RecordAuthFailure_Is_Case_Insensitive()
+        {
+            // Arrange
+            var manager = CreateManager();
+            var failure = Failure("Mail");
+
+            // Act
+            manager.RecordAuthFailure("Mail", failure);
+
+            // Assert — lookups are case-insensitive (matches Clients keying)
+            manager.GetAuthFailure("mail").Should().BeSameAs(failure);
         }
     }
 

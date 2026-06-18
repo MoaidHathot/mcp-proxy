@@ -1,6 +1,7 @@
 using McpProxy.Abstractions;
 using McpProxy.Sdk.Caching;
 using McpProxy.Sdk.Configuration;
+using McpProxy.Sdk.Exceptions;
 using McpProxy.Sdk.Filtering;
 using McpProxy.Sdk.Hooks;
 using McpProxy.Sdk.Hooks.BuiltIn;
@@ -168,6 +169,7 @@ public sealed class SdkEnabledProxyServer
 
         ProxyLogger.ListingTools(_logger, _clientManager.Clients.Count);
 
+        var surfaceAuthErrors = _configuration.Proxy.BackendErrors.OnAuthFailure == BackendAuthFailureBehavior.Surface;
         var toolsWithServers = new List<ToolWithServer>();
 
         // Add virtual tools first
@@ -189,6 +191,9 @@ public sealed class SdkEnabledProxyServer
             {
                 var tools = await clientInfo.Client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
+                // A successful listing clears any previously-recorded auth failure.
+                _clientManager.ClearAuthFailure(name);
+
                 // Cache the raw tools from the server
                 CacheToolsForServer(name, tools);
 
@@ -209,6 +214,15 @@ public sealed class SdkEnabledProxyServer
                     });
                 }
             }
+            catch (Exception ex) when (surfaceAuthErrors && BackendAuthClassifier.IsAuthFailure(ex))
+            {
+                // Record the auth failure (scoped to this backend / credential group) so it can
+                // be surfaced when the affected group is accessed, while healthy backends keep working.
+                var failure = ex as BackendAuthenticationException
+                    ?? BackendAuthenticationException.From(name, _configuration.Mcp.GetValueOrDefault(name)?.Auth?.CredentialGroup, ex);
+                _clientManager.RecordAuthFailure(name, failure);
+                ProxyLogger.BackendAuthSurfaced(_logger, name, ex);
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to list tools from server '{ServerName}'", name);
@@ -228,9 +242,69 @@ public sealed class SdkEnabledProxyServer
             .Select(t => t.Tool)
             .ToList();
 
+        // If nothing could be listed but a credential group failed to authenticate, surface the
+        // error rather than returning a silent empty list. Healthy groups (and virtual tools),
+        // when present, keep the list non-empty and the failed group surfaces on direct access.
+        if (allTools.Count == 0 && surfaceAuthErrors)
+        {
+            var failures = CollectActiveAuthFailures();
+            if (failures.Count > 0)
+            {
+                throw BackendAuthenticationException.Aggregate(failures);
+            }
+        }
+
         ProxyLogger.ToolsListed(_logger, allTools.Count);
 
         return new ListToolsResult { Tools = allTools };
+    }
+
+    /// <summary>
+    /// Collects authentication failures currently blocking access (still-deferred backends plus
+    /// any recorded for connected backends).
+    /// </summary>
+    private List<BackendAuthenticationException> CollectActiveAuthFailures()
+    {
+        var failures = new Dictionary<string, BackendAuthenticationException>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var name in _clientManager.DeferredClientNames)
+        {
+            var failure = _clientManager.GetAuthFailure(name);
+            if (failure is not null)
+            {
+                failures[name] = failure;
+            }
+        }
+
+        foreach (var failure in _clientManager.RecentAuthFailures)
+        {
+            failures[failure.ServerName] = failure;
+        }
+
+        return [.. failures.Values];
+    }
+
+    /// <summary>
+    /// Finds an authentication failure blocking discovery of the requested tool so a tool call can
+    /// surface the real cause instead of "tool not found". Prefers a prefix-owned backend; otherwise
+    /// returns any outstanding auth failure.
+    /// </summary>
+    private BackendAuthenticationException? FindBlockingAuthFailure(string toolName)
+    {
+        foreach (var (serverName, prefixer) in _prefixers)
+        {
+            if (prefixer is not null && prefixer.HasPrefix(toolName))
+            {
+                var owned = _clientManager.GetAuthFailure(serverName);
+                if (owned is not null)
+                {
+                    return owned;
+                }
+            }
+        }
+
+        var failures = _clientManager.RecentAuthFailures;
+        return failures.Count > 0 ? BackendAuthenticationException.Aggregate(failures) : null;
     }
 
     /// <summary>
@@ -269,6 +343,22 @@ public sealed class SdkEnabledProxyServer
 
         if (toolInfo is null)
         {
+            // Surface an authentication failure that is blocking discovery of the owning backend
+            // instead of a misleading "tool not found".
+            if (_configuration.Proxy.BackendErrors.OnAuthFailure == BackendAuthFailureBehavior.Surface)
+            {
+                var authFailure = FindBlockingAuthFailure(toolName);
+                if (authFailure is not null)
+                {
+                    ProxyLogger.BackendAuthSurfaced(_logger, authFailure.ServerName, authFailure);
+                    return new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = authFailure.Message }],
+                        IsError = true
+                    };
+                }
+            }
+
             ProxyLogger.ToolNotFound(_logger, toolName);
             return new CallToolResult
             {
@@ -674,6 +764,15 @@ public sealed class SdkEnabledProxyServer
             }
             catch (Exception ex)
             {
+                // Record auth failures so the tool call can surface the real cause rather than
+                // reporting "tool not found" when a backend's credential has expired.
+                if (BackendAuthClassifier.IsAuthFailure(ex))
+                {
+                    var failure = ex as BackendAuthenticationException
+                        ?? BackendAuthenticationException.From(serverName, _configuration.Mcp.GetValueOrDefault(serverName)?.Auth?.CredentialGroup, ex);
+                    _clientManager.RecordAuthFailure(serverName, failure);
+                }
+
                 _logger.LogWarning(ex, "Error searching server '{ServerName}' for tool '{ToolName}', continuing to next server", serverName, originalName);
             }
         }

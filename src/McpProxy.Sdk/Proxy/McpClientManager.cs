@@ -2,6 +2,7 @@ using McpProxy.Abstractions;
 using McpProxy.Sdk.Authentication;
 using McpProxy.Sdk.Configuration;
 using McpProxy.Sdk.Debugging;
+using McpProxy.Sdk.Exceptions;
 using McpProxy.Sdk.Logging;
 using Azure.Identity;
 using Microsoft.AspNetCore.Http;
@@ -26,6 +27,7 @@ public sealed class McpClientManager : IAsyncDisposable
     private readonly ConcurrentDictionary<string, McpClientInfo> _clients = [];
     private readonly ConcurrentDictionary<string, ServerConfiguration> _deferredClients = [];
     private readonly ConcurrentDictionary<string, InteractiveBrowserCredential> _sharedCredentials = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, BackendAuthenticationException> _lastAuthFailure = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<IDisposable> _disposables = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
     private ClientCapabilitySettings? _capabilitySettings;
@@ -65,6 +67,55 @@ public sealed class McpClientManager : IAsyncDisposable
     /// Gets the health tracker.
     /// </summary>
     public IHealthTracker HealthTracker => _healthTracker;
+
+    /// <summary>
+    /// Gets the most recent unresolved authentication failures, keyed by server name.
+    /// An entry is added when a backend connection or listing fails due to an authentication
+    /// error (for example, an expired interactive-browser credential) and removed when the
+    /// backend subsequently connects successfully.
+    /// </summary>
+    public IReadOnlyCollection<BackendAuthenticationException> RecentAuthFailures => [.. _lastAuthFailure.Values];
+
+    /// <summary>
+    /// Gets the recorded authentication failure for a specific server, or <c>null</c> if none.
+    /// </summary>
+    /// <param name="serverName">The server name.</param>
+    public BackendAuthenticationException? GetAuthFailure(string serverName) =>
+        _lastAuthFailure.TryGetValue(serverName, out var failure) ? failure : null;
+
+    /// <summary>
+    /// Records an authentication failure for a server so it can be surfaced to clients that
+    /// later access the affected credential group.
+    /// </summary>
+    /// <param name="serverName">The server name.</param>
+    /// <param name="failure">The wrapped authentication failure.</param>
+    public void RecordAuthFailure(string serverName, BackendAuthenticationException failure) =>
+        _lastAuthFailure[serverName] = failure;
+
+    /// <summary>
+    /// Clears any recorded authentication failure for a server (e.g., after a successful connect).
+    /// </summary>
+    /// <param name="serverName">The server name.</param>
+    public void ClearAuthFailure(string serverName) => _lastAuthFailure.TryRemove(serverName, out _);
+
+    /// <summary>
+    /// If <paramref name="exception"/> is an authentication failure, records a wrapped
+    /// <see cref="BackendAuthenticationException"/> for the server and returns it; otherwise
+    /// returns <c>null</c> and records nothing.
+    /// </summary>
+    private BackendAuthenticationException? TryRecordAuthFailure(string serverName, ServerConfiguration config, Exception exception)
+    {
+        if (!BackendAuthClassifier.IsAuthFailure(exception))
+        {
+            return null;
+        }
+
+        var wrapped = exception as BackendAuthenticationException
+            ?? BackendAuthenticationException.From(serverName, config.Auth?.CredentialGroup, exception);
+        _lastAuthFailure[serverName] = wrapped;
+        ProxyLogger.InteractiveSignInRequired(_logger, serverName, config.Auth?.CredentialGroup ?? "(none)");
+        return wrapped;
+    }
 
     /// <summary>
     /// Initializes connections to all configured backend servers.
@@ -116,6 +167,7 @@ public sealed class McpClientManager : IAsyncDisposable
                     ProxyLogger.BackendConnectionFailed(_logger, name, ex);
                     _healthTracker.RecordConnectionState(name, connected: false);
                     _healthTracker.RecordFailure(name, ex.Message);
+                    TryRecordAuthFailure(name, serverConfig, ex);
                     _deferredClients[name] = serverConfig;
                     ProxyLogger.BackendConnectionDeferred(_logger, name);
                 }
@@ -170,9 +222,12 @@ public sealed class McpClientManager : IAsyncDisposable
                     // Log but do not throw — the backend likely requires authentication
                     // that isn't available yet. The client stays deferred and will be
                     // retried on subsequent requests once the caller authenticates.
+                    // Auth failures are additionally recorded so an aggregated/unified
+                    // proxy can surface them when the affected group is accessed.
                     ProxyLogger.BackendConnectionFailed(_logger, name, ex);
                     _healthTracker.RecordConnectionState(name, connected: false);
                     _healthTracker.RecordFailure(name, ex.Message);
+                    TryRecordAuthFailure(name, serverConfig, ex);
                 }
             }
         }
@@ -262,6 +317,9 @@ public sealed class McpClientManager : IAsyncDisposable
                 _healthTracker.RecordConnectionState(serverName, connected: false);
                 _healthTracker.RecordFailure(serverName, ex.Message);
 
+                // Record auth failures so consumers can present an actionable message.
+                TryRecordAuthFailure(serverName, serverConfig, ex);
+
                 // Re-throw the original exception so callers (SingleServerProxy
                 // and its consumers) see the actual underlying cause —
                 // historically this catch returned `false`, which made
@@ -327,12 +385,15 @@ public sealed class McpClientManager : IAsyncDisposable
         RegisterNotificationHandlers(client, name);
 
         // Monitor for unexpected backend disconnection
-        MonitorClientCompletion(client, name);
+        MonitorClientCompletion(client, name, config);
 
         ProxyLogger.ConnectedToBackend(_logger, name);
 
         // Record connection state in health tracker
         _healthTracker.RecordConnectionState(name, connected: true);
+
+        // A successful connection clears any previously recorded auth failure.
+        ClearAuthFailure(name);
 
         return new McpClientInfo
         {
@@ -391,11 +452,13 @@ public sealed class McpClientManager : IAsyncDisposable
 
     /// <summary>
     /// Monitors a backend client for unexpected disconnection via its <see cref="McpClient.Completion"/> task.
-    /// When the backend session ends (e.g., process crash, network failure, graceful shutdown),
-    /// the health tracker is updated and a warning is logged. This runs as a fire-and-forget
-    /// continuation so it does not block the connection path.
+    /// When the backend session ends (e.g., process crash, network failure, token expiry that drops the
+    /// stream), the health tracker is updated, a warning is logged, and the backend is re-armed for lazy
+    /// reconnection: it is removed from the connected set and placed back in the deferred set so the next
+    /// request re-establishes the connection (re-running interactive sign-in if the credential expired).
+    /// This runs as a fire-and-forget continuation so it does not block the connection path.
     /// </summary>
-    private void MonitorClientCompletion(McpClient client, string serverName)
+    private void MonitorClientCompletion(McpClient client, string serverName, ServerConfiguration config)
     {
         _ = client.Completion.ContinueWith(completionTask =>
         {
@@ -417,7 +480,27 @@ public sealed class McpClientManager : IAsyncDisposable
             {
                 ProxyLogger.BackendDisconnected(_logger, serverName);
             }
+
+            ReArmDisconnectedClient(serverName, config);
         }, TaskScheduler.Default);
+    }
+
+    /// <summary>
+    /// Removes a dropped client from the connected set and returns it to the deferred set so the
+    /// next request reconnects lazily. No-op during disposal.
+    /// </summary>
+    private void ReArmDisconnectedClient(string serverName, ServerConfiguration config)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        // Drop the dead client. The next access goes through the deferred-connect path,
+        // which re-runs CreateClientAsync (and therefore re-authentication if required).
+        _clients.TryRemove(serverName, out _);
+        _deferredClients[serverName] = config;
+        ProxyLogger.BackendReArmedAfterDisconnect(_logger, serverName);
     }
 
     /// <summary>

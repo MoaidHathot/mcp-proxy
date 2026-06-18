@@ -1,5 +1,7 @@
+using Azure.Identity;
 using McpProxy.Abstractions;
 using McpProxy.Sdk.Configuration;
+using McpProxy.Sdk.Exceptions;
 using McpProxy.Sdk.Hooks;
 using McpProxy.Sdk.Hooks.BuiltIn;
 using McpProxy.Sdk.Proxy;
@@ -426,6 +428,141 @@ public class McpProxyServerTests : IAsyncDisposable
 
             // Assert
             result.Should().BeNull();
+        }
+    }
+
+    public class BackendAuthSurfacingTests : McpProxyServerTests
+    {
+        private static IMcpClientWrapper CreateAuthFailingClient(Exception? exception = null)
+        {
+            var ex = exception ?? new AuthenticationFailedException("interactive sign-in required");
+            var client = Substitute.For<IMcpClientWrapper>();
+            client.ListToolsAsync(Arg.Any<CancellationToken>())
+                .Returns(Task.FromException<IList<Tool>>(ex));
+            client.CallToolAsync(
+                    Arg.Any<string>(),
+                    Arg.Any<IReadOnlyDictionary<string, object?>>(),
+                    Arg.Any<CancellationToken>())
+                .Returns(Task.FromException<CallToolResult>(ex));
+            client.ListResourcesAsync(Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<IList<Resource>>([]));
+            client.ListPromptsAsync(Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<IList<Prompt>>([]));
+            return client;
+        }
+
+        private static ProxyConfiguration ConfigFor(
+            BackendAuthFailureBehavior behavior,
+            params string[] serverNames)
+        {
+            var mcp = new Dictionary<string, ServerConfiguration>();
+            foreach (var name in serverNames)
+            {
+                mcp[name] = new ServerConfiguration { Type = ServerTransportType.Stdio, Command = "mock" };
+            }
+
+            return new ProxyConfiguration
+            {
+                Proxy = new ProxySettings
+                {
+                    BackendErrors = new BackendErrorsConfiguration { OnAuthFailure = behavior }
+                },
+                Mcp = mcp
+            };
+        }
+
+        [Fact]
+        public async Task ListTools_Throws_When_All_Backends_Fail_Auth()
+        {
+            // Arrange — single backend whose credential is expired
+            RegisterClient("m365", CreateAuthFailingClient());
+            var server = CreateProxyServer(ConfigFor(BackendAuthFailureBehavior.Surface, "m365"));
+
+            // Act
+            var act = async () => await server.ListToolsCoreAsync(TestContext.Current.CancellationToken);
+
+            // Assert — surfaced as an error, not a silent empty list
+            await act.Should().ThrowAsync<BackendAuthenticationException>();
+        }
+
+        [Fact]
+        public async Task ListTools_Returns_Healthy_Tools_When_Group_Mixed()
+        {
+            // Arrange — one healthy backend, one expired backend (different groups)
+            RegisterClient("good", CreateMockClient("good", [CreateTool("good_tool")]));
+            RegisterClient("bad", CreateAuthFailingClient());
+            var server = CreateProxyServer(ConfigFor(BackendAuthFailureBehavior.Surface, "good", "bad"));
+
+            // Act
+            var result = await server.ListToolsCoreAsync(TestContext.Current.CancellationToken);
+
+            // Assert — healthy group still works; expired group is omitted (surfaces on access)
+            result.Tools.Should().ContainSingle();
+            result.Tools[0].Name.Should().Be("good_tool");
+        }
+
+        [Fact]
+        public async Task ListTools_Skips_Silently_When_Policy_Is_Skip()
+        {
+            // Arrange
+            RegisterClient("m365", CreateAuthFailingClient());
+            var server = CreateProxyServer(ConfigFor(BackendAuthFailureBehavior.Skip, "m365"));
+
+            // Act
+            var result = await server.ListToolsCoreAsync(TestContext.Current.CancellationToken);
+
+            // Assert — legacy behavior preserved: empty list, no throw
+            result.Tools.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task ListTools_Continues_On_NonAuth_Error_Without_Throwing()
+        {
+            // Arrange — a non-auth transient failure must keep the resilient behavior
+            RegisterClient("flaky", CreateAuthFailingClient(new InvalidOperationException("boom")));
+            var server = CreateProxyServer(ConfigFor(BackendAuthFailureBehavior.Surface, "flaky"));
+
+            // Act
+            var result = await server.ListToolsCoreAsync(TestContext.Current.CancellationToken);
+
+            // Assert — not classified as auth, so no throw and an empty (resilient) result
+            result.Tools.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task CallTool_Surfaces_Auth_Error_Instead_Of_NotFound()
+        {
+            // Arrange — the owning backend can't be enumerated because its credential expired
+            RegisterClient("m365", CreateAuthFailingClient());
+            var server = CreateProxyServer(ConfigFor(BackendAuthFailureBehavior.Surface, "m365"));
+            var request = new CallToolRequestParams { Name = "send_mail" };
+
+            // Act
+            var result = await server.CallToolCoreAsync(request, TestContext.Current.CancellationToken);
+
+            // Assert — actionable auth error, not "tool not found"
+            result.IsError.Should().BeTrue();
+            var text = result.Content[0] as TextContentBlock;
+            text!.Text.Should().Contain("m365");
+            text.Text.Should().Contain("sign-in");
+            text.Text.Should().NotContain("not found");
+        }
+
+        [Fact]
+        public async Task CallTool_Returns_NotFound_When_No_Auth_Failure()
+        {
+            // Arrange — healthy backend, but tool genuinely absent
+            RegisterClient("good", CreateMockClient("good", [CreateTool("good_tool")]));
+            var server = CreateProxyServer(ConfigFor(BackendAuthFailureBehavior.Surface, "good"));
+            var request = new CallToolRequestParams { Name = "missing_tool" };
+
+            // Act
+            var result = await server.CallToolCoreAsync(request, TestContext.Current.CancellationToken);
+
+            // Assert
+            result.IsError.Should().BeTrue();
+            var text = result.Content[0] as TextContentBlock;
+            text!.Text.Should().Contain("not found");
         }
     }
 

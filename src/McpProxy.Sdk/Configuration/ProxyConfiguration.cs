@@ -70,6 +70,45 @@ public sealed class ProxySettings
     /// <see cref="ServerConfiguration.Cors"/> property.
     /// </summary>
     public CorsConfiguration Cors { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets how backend errors (in particular authentication failures) are
+    /// surfaced to MCP clients.
+    /// </summary>
+    public BackendErrorsConfiguration BackendErrors { get; set; } = new();
+}
+
+/// <summary>
+/// Controls how a backend authentication failure is surfaced to the MCP client.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<BackendAuthFailureBehavior>))]
+public enum BackendAuthFailureBehavior
+{
+    /// <summary>
+    /// Surface authentication failures as errors. When a backend's credential is expired
+    /// and interactive sign-in cannot complete, the proxy returns an explicit error for the
+    /// affected scope instead of silently omitting the backend's tools. Other (healthy)
+    /// credential groups are unaffected. This is the default.
+    /// </summary>
+    Surface,
+
+    /// <summary>
+    /// Legacy behavior: log the authentication failure and continue, omitting the affected
+    /// backend's tools from the aggregated list (which can appear as a silent "0 tools").
+    /// </summary>
+    Skip
+}
+
+/// <summary>
+/// Configuration for how backend errors are handled and surfaced to clients.
+/// </summary>
+public sealed class BackendErrorsConfiguration
+{
+    /// <summary>
+    /// Gets or sets the behavior when a backend authentication failure occurs.
+    /// Defaults to <see cref="BackendAuthFailureBehavior.Surface"/>.
+    /// </summary>
+    public BackendAuthFailureBehavior OnAuthFailure { get; set; } = BackendAuthFailureBehavior.Surface;
 }
 
 /// <summary>

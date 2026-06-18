@@ -346,7 +346,28 @@ With both options enabled:
    the shared credential — no additional browser prompts
 5. The token is cached in the OS credential store (Windows Credential Manager, macOS Keychain, etc.)
 6. **Across restarts**, the cached refresh token is used silently (~90 day lifetime)
-7. After expiry, the next request triggers a new browser sign-in automatically
+7. After expiry, the next access to any backend automatically opens a fresh browser sign-in
+
+### Credential expiry and re-authentication
+
+Because all four backends share `credentialGroup: "m365"`, they share one token. When the
+refresh token finally expires, the **next** access to any of them automatically opens a
+browser sign-in (`InteractiveBrowserCredential` does this on the first request after the
+cached token can no longer be refreshed silently). One sign-in re-authenticates the whole group.
+
+If sign-in cannot complete (browser closed/timed out), the proxy **surfaces the error**
+instead of silently returning zero tools:
+
+- `tools/list` for the expired group returns an explicit authentication error rather than
+  an empty list.
+- Calling a tool whose backend is blocked on auth returns the real sign-in error, not
+  "tool not found".
+- A healthy credential group is unaffected — only the expired group surfaces an error.
+
+This is the default (`proxy.backendErrors.onAuthFailure: "surface"`). Set it to `"skip"`
+to restore the older behavior of silently omitting the affected backend's tools. Because
+this sample co-locates the proxy with the user (stdio or local HTTP), the browser opens on
+the user's machine.
 
 ### Token sharing across backends
 

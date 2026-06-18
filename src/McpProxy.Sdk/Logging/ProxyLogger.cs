@@ -500,4 +500,15 @@ public static partial class ProxyLogger
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "CORS configuration for {Scope} is enabled but no AllowedOrigins are specified; no origins will be permitted")]
     public static partial void CorsNoOriginsConfigured(ILogger logger, string scope);
+
+    // === Backend authentication / re-auth ===
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Interactive sign-in required for backend '{ServerName}' (credential group '{CredentialGroup}'); the failure will be surfaced to the client")]
+    public static partial void InteractiveSignInRequired(ILogger logger, string serverName, string credentialGroup);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Surfacing backend authentication failure for '{ServerName}' to the MCP client")]
+    public static partial void BackendAuthSurfaced(ILogger logger, string serverName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Backend '{ServerName}' disconnected; re-armed for lazy reconnection on next request")]
+    public static partial void BackendReArmedAfterDisconnect(ILogger logger, string serverName);
 }
